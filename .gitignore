@@ -18,3 +18,7 @@ __pycache__/
 
 # Local-only tooling
 ansible/
+
+# Build artifacts
+.build/
+build/
