@@ -36,6 +36,8 @@ install -D -m 0644 config/k10-barrel-emulator.toml \
     %{buildroot}%{_sysconfdir}/k10-barrel-emulator/config.toml
 install -D -m 0644 packaging/systemd/k10-barrel-emulator.service \
     %{buildroot}%{_unitdir}/k10-barrel-emulator.service
+install -D -m 0644 packaging/dbus/ro.vilt.SwitchbotBleEmulator.conf \
+    %{buildroot}%{_datadir}/dbus-1/system.d/ro.vilt.SwitchbotBleEmulator.conf
 
 %files
 %doc README.md docs/ARCHITECTURE.md
@@ -43,6 +45,7 @@ install -D -m 0644 packaging/systemd/k10-barrel-emulator.service \
 %{_bindir}/k10-barrel-emulatord
 %{_bindir}/k10-barrel-emulatorctl
 %{_unitdir}/k10-barrel-emulator.service
+%{_datadir}/dbus-1/system.d/ro.vilt.SwitchbotBleEmulator.conf
 
 %post
 %systemd_post k10-barrel-emulator.service
