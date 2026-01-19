@@ -24,6 +24,19 @@ Planned entry points:
 - `src/daemon/main.c` -> `main()`
 - `src/daemon/daemon.c` -> `k10_daemon_run()`
 
+### Directory layout (planned)
+
+- `src/daemon/` (lifecycle, systemd integration)
+- `src/ble/` (BlueZ D-Bus: advertising + GATT)
+- `src/dbus/` (public control API)
+- `src/config/` (TOML load/save)
+- `src/log/` (journald helpers)
+- `src/cli/` (D-Bus client)
+- `include/` (public and internal headers)
+- `docs/` (protocol + architecture notes)
+- `packaging/` (systemd, RPM)
+- `selinux/` (policy sources)
+
 ### Control CLI
 
 `k10-barrel-emulatorctl` is a thin D-Bus client for local scripting. It:
@@ -81,6 +94,18 @@ Interfaces:
 - `com.switchbot.SwitchbotBleEmulator.SweeperMiniBarrel`
 - `com.switchbot.SwitchbotBleEmulator.Config`
 
+### Object tree
+
+The daemon exposes one object path and multiple interfaces on the same object.
+This keeps Cockpit and CLI implementations straightforward.
+
+```
+/ro/vilt/SwitchbotBleEmulator
+  com.switchbot.SwitchbotBleEmulator.SweeperMini
+  com.switchbot.SwitchbotBleEmulator.SweeperMiniBarrel
+  com.switchbot.SwitchbotBleEmulator.Config
+```
+
 ### Config interface
 
 `com.switchbot.SwitchbotBleEmulator.Config` is responsible for reading and
@@ -89,11 +114,11 @@ reload when possible.
 
 Planned methods:
 
-- `GetAll() -> a{sv}`
+- `GetAll() -> a{sv}` (entire config)
 - `Get(s key) -> v`
 - `Set(s key, v value) -> b` (returns success)
-- `SetAll(a{sv} values) -> b`
-- `Reload() -> b`
+- `SetAll(a{sv} values) -> b` (batch update)
+- `Reload() -> b` (re-read file)
 
 Planned signals:
 
@@ -112,7 +137,7 @@ Planned methods:
 
 - `StartAdvertising() -> b`
 - `StopAdvertising() -> b`
-- `GetStatus() -> a{sv}`
+- `GetStatus() -> a{sv}` (includes adapter, advertising state, active config hash)
 
 Planned signals:
 
@@ -138,6 +163,10 @@ Planned config keys (initial set):
 - `include_tx_power` (bool)
 - `fw_major` / `fw_minor` (int)
 
+Config keys are exposed one-for-one over D-Bus. `Set()` must validate types,
+persist to the file, and trigger a non-destructive reload (or a full restart if
+required by BlueZ).
+
 Planned code paths:
 
 - `src/config/config.c` -> `k10_config_load()` / `k10_config_save()`
@@ -158,6 +187,10 @@ Planned code paths:
 - Apply systemd hardening (e.g. `NoNewPrivileges=true`, `ProtectSystem=strict`)
   while preserving access to `/etc/k10-barrel-emulator/config.toml`.
 
+Planned systemd unit location:
+
+- `packaging/systemd/k10-barrel-emulator.service`
+
 Planned code paths:
 
 - `selinux/k10-barrel-emulator.te`
@@ -167,4 +200,3 @@ Planned code paths:
 
 - Provide an RPM spec in `packaging/rpm/`.
 - CI builds artifacts and publishes them on GitHub releases.
-
