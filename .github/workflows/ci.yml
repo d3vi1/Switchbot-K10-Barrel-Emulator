@@ -38,3 +38,28 @@ jobs:
         with:
           name: rpm-packages
           path: .build/rpmbuild/RPMS
+
+  rpm-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build RPM in arm64 container
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            fedora:40 \
+            bash -c "dnf -y install cmake gcc make rpm-build rpmdevtools systemd-devel systemd-rpm-macros && scripts/build_rpm.sh"
+
+      - name: Upload RPMs (aarch64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages-aarch64
+          path: .build/rpmbuild/RPMS
