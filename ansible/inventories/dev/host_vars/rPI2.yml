@@ -1,0 +1,4 @@
+# Host-specific overrides (optional)
+# k10_emulator:
+#   manufacturer_mac_label: "001122334455"
+

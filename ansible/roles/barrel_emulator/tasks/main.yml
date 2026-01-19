@@ -1,0 +1,34 @@
+- name: Create install directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /opt/switchbot-k10-barrel-emulator
+    - /etc/switchbot-k10-barrel-emulator
+
+- name: Deploy emulator code to /opt
+  ansible.builtin.copy:
+    src: "{{ barrel_emulator_repo_root }}/emulator/"
+    dest: /opt/switchbot-k10-barrel-emulator/
+    mode: preserve
+
+- name: Write emulator config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/switchbot-k10-barrel-emulator/config.yml
+    mode: "0644"
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: k10-barrel-emulator.service.j2
+    dest: /etc/systemd/system/k10-barrel-emulator.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and restart emulator service
+  ansible.builtin.systemd:
+    name: k10-barrel-emulator
+    enabled: true
+    state: restarted
+

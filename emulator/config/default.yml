@@ -1,0 +1,18 @@
+k10_emulator:
+  adapter: hci0
+  local_name: WoS1MB
+
+  fw_major: 1
+  fw_minor: 0
+
+  company_id: 0x0969
+  manufacturer_mac_label: null
+
+  include_tx_power: true
+  advertise_fd3d_service_data: true
+  fd3d_service_data_hex: "00"
+
+  advertise_service_uuids:
+    - CBA20D00-224D-11E6-9FB8-0002A5D5C51B
+    - B000
+

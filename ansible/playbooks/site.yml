@@ -1,0 +1,12 @@
+- name: Bootstrap Raspberry Pis + deploy dock emulator
+  hosts: rpis
+  become: true
+  vars:
+    repo_root: "{{ playbook_dir }}/../.."
+  roles:
+    - role: common
+    - role: bluetooth
+    - role: barrel_emulator
+      vars:
+        barrel_emulator_repo_root: "{{ repo_root }}"
+

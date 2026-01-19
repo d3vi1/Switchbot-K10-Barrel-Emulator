@@ -1,0 +1,27 @@
+- name: Ensure bluetooth is enabled
+  ansible.builtin.systemd:
+    name: bluetooth
+    enabled: true
+    state: started
+
+- name: Unblock Bluetooth via rfkill (best effort)
+  ansible.builtin.command: rfkill unblock bluetooth
+  changed_when: false
+  failed_when: false
+
+- name: Enable BlueZ experimental features (best effort)
+  ansible.builtin.lineinfile:
+    path: /etc/bluetooth/main.conf
+    regexp: '^#?Experimental\s*='
+    line: 'Experimental = true'
+    insertafter: '^\[General\]'
+  notify: Restart bluetooth
+
+- name: Prefer dual-mode controller (best effort)
+  ansible.builtin.lineinfile:
+    path: /etc/bluetooth/main.conf
+    regexp: '^#?ControllerMode\s*='
+    line: 'ControllerMode = dual'
+    insertafter: '^\[General\]'
+  notify: Restart bluetooth
+

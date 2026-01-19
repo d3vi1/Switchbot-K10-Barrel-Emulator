@@ -1,0 +1,19 @@
+- name: Update apt cache (Debian/Ubuntu/Raspberry Pi OS)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts.os_family == "Debian"
+
+- name: Select base package list for the OS
+  ansible.builtin.set_fact:
+    k10_common_packages: "{{ k10_common_packages_by_os_family.get(ansible_facts.os_family, []) }}"
+
+- name: Fail on unsupported OS family
+  ansible.builtin.fail:
+    msg: "Unsupported OS family: {{ ansible_facts.os_family }}. Supported: {{ k10_common_packages_by_os_family.keys() | list }}"
+  when: k10_common_packages | length == 0
+
+- name: Install base packages
+  ansible.builtin.package:
+    name: "{{ k10_common_packages }}"
+    state: present

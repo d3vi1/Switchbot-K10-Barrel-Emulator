@@ -1,0 +1,18 @@
+k10_common_packages_by_os_family:
+  Debian:
+    - bluez
+    - bluetooth
+    - rfkill
+    - python3
+    - python3-dbus
+    - python3-gi
+    - python3-yaml
+    - git
+  RedHat:
+    - bluez
+    - rfkill
+    - python3
+    - python3-dbus
+    - python3-gobject
+    - python3-pyyaml
+    - git

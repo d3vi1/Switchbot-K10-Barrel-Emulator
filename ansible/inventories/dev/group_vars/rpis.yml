@@ -1,0 +1,22 @@
+k10_emulator:
+  adapter: hci0
+  local_name: WoS1MB
+
+  # Dock firmware version reported via GetInfoResponse (57 81 ...)
+  fw_major: 1
+  fw_minor: 0
+
+  # Advertising identity
+  company_id: 0x0969
+  # Optional 6-byte "MAC label" embedded in ManufacturerData (not the BLE address).
+  # If omitted, the emulator will try to derive a stable value from the host.
+  manufacturer_mac_label: null
+
+  include_tx_power: true
+  advertise_fd3d_service_data: true
+  fd3d_service_data_hex: "00"
+
+  advertise_service_uuids:
+    - CBA20D00-224D-11E6-9FB8-0002A5D5C51B
+    - B000
+
