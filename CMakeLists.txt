@@ -8,6 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_executable(k10-barrel-emulatord
     src/daemon/main.c
     src/daemon/daemon.c
+    src/dbus/dbus.c
     src/config/config.c
     src/log/log.c
 )
@@ -16,15 +17,11 @@ target_include_directories(k10-barrel-emulatord PRIVATE include)
 
 target_compile_options(k10-barrel-emulatord PRIVATE -Wall -Wextra -Wpedantic)
 
-find_package(PkgConfig)
-if(PkgConfig_FOUND)
-    pkg_check_modules(SYSTEMD libsystemd)
-    if(SYSTEMD_FOUND)
-        target_compile_definitions(k10-barrel-emulatord PRIVATE K10_USE_SYSTEMD)
-        target_include_directories(k10-barrel-emulatord PRIVATE ${SYSTEMD_INCLUDE_DIRS})
-        target_link_libraries(k10-barrel-emulatord PRIVATE ${SYSTEMD_LIBRARIES})
-    endif()
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+target_compile_definitions(k10-barrel-emulatord PRIVATE K10_USE_SYSTEMD)
+target_include_directories(k10-barrel-emulatord PRIVATE ${SYSTEMD_INCLUDE_DIRS})
+target_link_libraries(k10-barrel-emulatord PRIVATE ${SYSTEMD_LIBRARIES})
 
 add_executable(k10-barrel-emulatorctl
     src/cli/main.c

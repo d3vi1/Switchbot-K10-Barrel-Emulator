@@ -10,10 +10,12 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  gcc
 BuildRequires:  cmake
 BuildRequires:  make
+BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  systemd-rpm-macros
 
 Requires:       bluez
 Requires:       dbus
+Requires:       systemd-libs
 
 %{?systemd_requires}
 

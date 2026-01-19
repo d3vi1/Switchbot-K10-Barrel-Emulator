@@ -19,5 +19,6 @@ struct k10_config {
 };
 
 int k10_config_load(const char *path, struct k10_config *out_config);
+int k10_config_save(const char *path, const struct k10_config *config);
 
 #endif
