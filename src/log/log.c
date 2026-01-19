@@ -7,8 +7,7 @@
 #include <systemd/sd-journal.h>
 #endif
 
-static void k10_log_vprint(FILE *stream, const char *level,
-                           const char *format, va_list args) {
+static void k10_log_vprint(FILE *stream, const char *level, const char *format, va_list args) {
 #ifdef K10_USE_SYSTEMD
     sd_journal_printv(level, format, args);
     (void)stream;
