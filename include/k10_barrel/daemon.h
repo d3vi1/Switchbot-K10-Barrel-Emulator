@@ -5,11 +5,7 @@
 
 #include "k10_barrel/config.h"
 
-enum k10_emulator_mode {
-    K10_MODE_NONE = 0,
-    K10_MODE_SWEEPER,
-    K10_MODE_BARREL
-};
+enum k10_emulator_mode { K10_MODE_NONE = 0, K10_MODE_SWEEPER, K10_MODE_BARREL };
 
 struct k10_daemon_state {
     struct k10_config config;

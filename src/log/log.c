@@ -2,6 +2,8 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#include <syslog.h>
 
 #ifdef K10_USE_SYSTEMD
 #include <systemd/sd-journal.h>
@@ -9,7 +11,13 @@
 
 static void k10_log_vprint(FILE *stream, const char *level, const char *format, va_list args) {
 #ifdef K10_USE_SYSTEMD
-    sd_journal_printv(level, format, args);
+    int priority = LOG_INFO;
+
+    if (strcmp(level, "ERROR") == 0) {
+        priority = LOG_ERR;
+    }
+
+    sd_journal_printv(priority, format, args);
     (void)stream;
 #else
     fprintf(stream, "%s: ", level);

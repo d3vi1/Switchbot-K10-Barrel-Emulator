@@ -273,8 +273,7 @@ static int k10_dbus_emit_status_changed(struct k10_dbus_context *ctx, const char
     sd_bus_message *signal = NULL;
     int r = 0;
 
-    r = sd_bus_message_new_signal(ctx->bus, &signal, K10_DBUS_OBJECT, interface,
-                                  "StatusChanged");
+    r = sd_bus_message_new_signal(ctx->bus, &signal, K10_DBUS_OBJECT, interface, "StatusChanged");
     if (r < 0) {
         return r;
     }
@@ -511,7 +510,7 @@ static int k10_dbus_apply_uuid_array(sd_bus_message *m, struct k10_config *confi
 
 static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     struct k10_dbus_context *ctx = userdata;
-    struct k10_config updated = ctx->state->config;
+    struct k10_config updated_config = ctx->state->config;
     int changed = 0;
     int r = 0;
 
@@ -524,7 +523,7 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
 
     while ((r = sd_bus_message_enter_container(m, 'e', "sv")) > 0) {
         const char *key = NULL;
-        bool updated = false;
+        bool entry_updated = false;
 
         r = sd_bus_message_read(m, "s", &key);
         if (r < 0) {
@@ -532,34 +531,35 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
         }
 
         if (strcmp(key, "adapter") == 0) {
-            r = k10_dbus_apply_string(m, updated.adapter, sizeof(updated.adapter));
-            updated = (r >= 0);
+            r = k10_dbus_apply_string(m, updated_config.adapter, sizeof(updated_config.adapter));
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "local_name") == 0) {
-            r = k10_dbus_apply_string(m, updated.local_name, sizeof(updated.local_name));
-            updated = (r >= 0);
+            r = k10_dbus_apply_string(m, updated_config.local_name,
+                                      sizeof(updated_config.local_name));
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "company_id") == 0) {
-            r = k10_dbus_apply_uint(m, &updated.company_id);
-            updated = (r >= 0);
+            r = k10_dbus_apply_uint(m, &updated_config.company_id);
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "manufacturer_mac_label") == 0) {
-            r = k10_dbus_apply_string(m, updated.manufacturer_mac_label,
-                                      sizeof(updated.manufacturer_mac_label));
-            updated = (r >= 0);
+            r = k10_dbus_apply_string(m, updated_config.manufacturer_mac_label,
+                                      sizeof(updated_config.manufacturer_mac_label));
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "service_uuids") == 0) {
-            r = k10_dbus_apply_uuid_array(m, &updated);
-            updated = (r >= 0);
+            r = k10_dbus_apply_uuid_array(m, &updated_config);
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "fd3d_service_data_hex") == 0) {
-            r = k10_dbus_apply_string(m, updated.fd3d_service_data_hex,
-                                      sizeof(updated.fd3d_service_data_hex));
-            updated = (r >= 0);
+            r = k10_dbus_apply_string(m, updated_config.fd3d_service_data_hex,
+                                      sizeof(updated_config.fd3d_service_data_hex));
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "include_tx_power") == 0) {
-            r = k10_dbus_apply_bool(m, &updated.include_tx_power);
-            updated = (r >= 0);
+            r = k10_dbus_apply_bool(m, &updated_config.include_tx_power);
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "fw_major") == 0) {
-            r = k10_dbus_apply_uint(m, &updated.fw_major);
-            updated = (r >= 0);
+            r = k10_dbus_apply_uint(m, &updated_config.fw_major);
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "fw_minor") == 0) {
-            r = k10_dbus_apply_uint(m, &updated.fw_minor);
-            updated = (r >= 0);
+            r = k10_dbus_apply_uint(m, &updated_config.fw_minor);
+            entry_updated = (r >= 0);
         } else {
             r = sd_bus_message_skip(m, "v");
         }
@@ -573,7 +573,7 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
             return r;
         }
 
-        if (updated) {
+        if (entry_updated) {
             changed = 1;
         }
     }
@@ -588,7 +588,7 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
     }
 
     if (changed) {
-        ctx->state->config = updated;
+        ctx->state->config = updated_config;
         if (k10_config_save(ctx->state->config_path, &ctx->state->config) != 0) {
             k10_log_error("dbus config save failed: %s", ctx->state->config_path);
             return sd_bus_reply_method_return(m, "b", 0);
@@ -619,8 +619,7 @@ static const sd_bus_vtable k10_control_vtable[] = {
     SD_BUS_METHOD("Reload", "", "b", k10_method_reload, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("GetStatus", "", "a{sv}", k10_method_get_status, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL("StatusChanged", "a{sv}", 0),
-    SD_BUS_VTABLE_END
-};
+    SD_BUS_VTABLE_END};
 
 static const sd_bus_vtable k10_config_vtable[] = {
     SD_BUS_VTABLE_START(0),
@@ -628,8 +627,7 @@ static const sd_bus_vtable k10_config_vtable[] = {
     SD_BUS_METHOD("SetConfig", "a{sv}", "b", k10_method_set_config, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_METHOD("Reload", "", "b", k10_method_reload_config, SD_BUS_VTABLE_UNPRIVILEGED),
     SD_BUS_SIGNAL("ConfigChanged", "a{sv}", 0),
-    SD_BUS_VTABLE_END
-};
+    SD_BUS_VTABLE_END};
 
 static void k10_handle_signal(int signal_value) {
     (void)signal_value;
@@ -670,26 +668,24 @@ int k10_dbus_run(struct k10_daemon_state *state) {
     barrel_binding.ctx = &ctx;
     barrel_binding.mode = K10_MODE_BARREL;
 
-    r = sd_bus_add_object_vtable(ctx.bus, &sweeper_slot, K10_DBUS_OBJECT,
-                                 K10_DBUS_IFACE_SWEEPER, k10_control_vtable,
-                                 &sweeper_binding);
+    r = sd_bus_add_object_vtable(ctx.bus, &sweeper_slot, K10_DBUS_OBJECT, K10_DBUS_IFACE_SWEEPER,
+                                 k10_control_vtable, &sweeper_binding);
     if (r < 0) {
         k10_log_error("dbus add sweeper iface failed: %s", strerror(-r));
         exit_code = 1;
         goto cleanup;
     }
 
-    r = sd_bus_add_object_vtable(ctx.bus, &barrel_slot, K10_DBUS_OBJECT,
-                                 K10_DBUS_IFACE_BARREL, k10_control_vtable,
-                                 &barrel_binding);
+    r = sd_bus_add_object_vtable(ctx.bus, &barrel_slot, K10_DBUS_OBJECT, K10_DBUS_IFACE_BARREL,
+                                 k10_control_vtable, &barrel_binding);
     if (r < 0) {
         k10_log_error("dbus add barrel iface failed: %s", strerror(-r));
         exit_code = 1;
         goto cleanup;
     }
 
-    r = sd_bus_add_object_vtable(ctx.bus, &config_slot, K10_DBUS_OBJECT,
-                                 K10_DBUS_IFACE_CONFIG, k10_config_vtable, &ctx);
+    r = sd_bus_add_object_vtable(ctx.bus, &config_slot, K10_DBUS_OBJECT, K10_DBUS_IFACE_CONFIG,
+                                 k10_config_vtable, &ctx);
     if (r < 0) {
         k10_log_error("dbus add config iface failed: %s", strerror(-r));
         exit_code = 1;

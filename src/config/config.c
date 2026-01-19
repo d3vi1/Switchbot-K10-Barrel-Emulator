@@ -4,8 +4,8 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <strings.h>
 #include <string.h>
+#include <strings.h>
 
 #define K10_MAX_LINE 256
 
