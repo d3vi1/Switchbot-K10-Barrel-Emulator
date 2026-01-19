@@ -14,4 +14,4 @@ if (( ${#sh_files[@]} )); then
   shellcheck "${sh_files[@]}"
 fi
 
-rpmlint -f "${ROOT}/packaging/rpm/rpmlint.conf" "${ROOT}/packaging/rpm/k10-barrel-emulator.spec"
+rpmlint -c "${ROOT}/packaging/rpm/rpmlint.conf" "${ROOT}/packaging/rpm/k10-barrel-emulator.spec"
