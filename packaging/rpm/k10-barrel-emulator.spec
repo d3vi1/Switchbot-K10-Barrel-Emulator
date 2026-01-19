@@ -3,7 +3,7 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        SwitchBot K10 barrel emulator (skeleton)
 
-License:        LicenseRef-Proprietary
+License:        GPL-3.0-or-later
 URL:            https://github.com/d3vi1/Switchbot-K10-Barrel-Emulator
 Source0:        %{name}-%{version}.tar.gz
 

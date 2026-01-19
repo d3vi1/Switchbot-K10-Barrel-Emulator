@@ -42,6 +42,10 @@ This installs BlueZ + Python deps, deploys the emulator to `/opt/switchbot-k10-b
 - macOS CoreBluetooth heavily restricts custom advertising fields; Linux/BlueZ is preferred for faithful emulation.
 - Everything committed to git must be in English.
 
+## License
+
+GPLv3 or later. See `LICENSE`.
+
 ## Fedora Server on Raspberry Pi (headless)
 
 See `docs/FEDORA_SERVER_RPI.md`.
