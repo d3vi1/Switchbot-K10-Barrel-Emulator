@@ -23,6 +23,8 @@ Planned entry points:
 
 - `src/daemon/main.c` -> `main()`
 - `src/daemon/daemon.c` -> `k10_daemon_run()`
+ - `src/config/config.c` -> `k10_config_load()`
+ - `src/log/log.c` -> `k10_log_info()` / `k10_log_error()`
 
 ### Directory layout (planned)
 
