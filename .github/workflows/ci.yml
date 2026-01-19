@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    container: fedora:40
+    steps:
+      - name: Install dependencies
+        run: dnf -y install clang-tools-extra shellcheck rpmlint rpmdevtools
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run linters
+        run: scripts/run_linters.sh
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:40
+    steps:
+      - name: Install dependencies
+        run: dnf -y install cmake gcc make rpm-build rpmdevtools systemd-rpm-macros
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build RPM
+        run: scripts/build_rpm.sh
+
+      - name: Upload RPMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages
+          path: .build/rpmbuild/RPMS

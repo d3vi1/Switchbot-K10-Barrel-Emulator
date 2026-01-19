@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:40
+    steps:
+      - name: Install dependencies
+        run: dnf -y install cmake gcc make rpm-build rpmdevtools systemd-rpm-macros
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build RPM
+        run: scripts/build_rpm.sh
+
+      - name: Publish release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .build/rpmbuild/RPMS/**/*.rpm
