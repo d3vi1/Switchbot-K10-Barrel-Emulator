@@ -36,6 +36,25 @@ static const char *k10_mode_to_string(enum k10_emulator_mode mode) {
     }
 }
 
+static void k10_apply_mode_name(struct k10_config *config, enum k10_emulator_mode mode) {
+    if (config == NULL) {
+        return;
+    }
+
+    switch (mode) {
+    case K10_MODE_SWEEPER:
+        strncpy(config->local_name, "WoS1MINI", sizeof(config->local_name) - 1);
+        config->local_name[sizeof(config->local_name) - 1] = '\0';
+        break;
+    case K10_MODE_BARREL:
+        strncpy(config->local_name, "WoS1MB", sizeof(config->local_name) - 1);
+        config->local_name[sizeof(config->local_name) - 1] = '\0';
+        break;
+    default:
+        break;
+    }
+}
+
 static int k10_dbus_append_kv_string(sd_bus_message *msg, const char *key, const char *value) {
     int r = 0;
 
@@ -377,17 +396,20 @@ static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret
     bool ok = false;
     bool adv_ok = false;
     bool gatt_ok = false;
+    struct k10_config runtime_config;
 
     (void)ret_error;
 
-    adv_ok = (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv,
-                            &binding->ctx->state->config) == 0);
-    gatt_ok = (k10_gatt_start(binding->ctx->bus, &binding->ctx->state->gatt,
-                              &binding->ctx->state->config) == 0);
+    runtime_config = binding->ctx->state->config;
+    k10_apply_mode_name(&runtime_config, binding->mode);
+
+    adv_ok = (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &runtime_config) == 0);
+    gatt_ok = (k10_gatt_start(binding->ctx->bus, &binding->ctx->state->gatt, &runtime_config) == 0);
 
     if (adv_ok && gatt_ok) {
         binding->ctx->state->running = true;
         binding->ctx->state->mode = binding->mode;
+        binding->ctx->state->config = runtime_config;
         ok = true;
     } else {
         if (adv_ok) {
