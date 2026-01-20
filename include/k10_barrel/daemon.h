@@ -12,7 +12,6 @@ struct k10_daemon_state {
     struct k10_config config;
     char config_path[256];
     bool running;
-    bool advertising;
     enum k10_emulator_mode mode;
     struct k10_adv_state adv;
 };

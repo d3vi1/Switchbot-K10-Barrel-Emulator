@@ -305,10 +305,31 @@ static void k10_adv_set_defaults(struct k10_adv_state *state) {
     }
 }
 
-static int k10_adv_register(sd_bus *bus, struct k10_adv_state *state, const char *adapter) {
-    sd_bus_error error = SD_BUS_ERROR_NULL;
+static int k10_adv_register_complete(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
+    struct k10_adv_state *state = userdata;
+
+    if (ret_error != NULL && sd_bus_error_is_set(ret_error)) {
+        k10_log_error("advertising register failed: %s",
+                      ret_error->message ? ret_error->message : ret_error->name);
+        state->registered = false;
+    } else if (sd_bus_message_is_method_error(m, NULL)) {
+        const sd_bus_error *error = sd_bus_message_get_error(m);
+        k10_log_error("advertising register failed: %s",
+                      error && error->message ? error->message : "unknown error");
+        state->registered = false;
+    } else {
+        state->registered = true;
+        k10_log_info("advertising registered on %s", state->config.adapter);
+    }
+
+    state->pending = false;
+    sd_bus_slot_unref(state->pending_slot);
+    state->pending_slot = NULL;
+    return 1;
+}
+
+static int k10_adv_register_async(sd_bus *bus, struct k10_adv_state *state, const char *adapter) {
     sd_bus_message *message = NULL;
-    sd_bus_message *reply = NULL;
     char adapter_path[128];
     int r = 0;
 
@@ -335,15 +356,12 @@ static int k10_adv_register(sd_bus *bus, struct k10_adv_state *state, const char
         goto finish;
     }
 
-    r = sd_bus_call(bus, message, 0, &error, &reply);
+    r = sd_bus_call_async(bus, &state->pending_slot, message, k10_adv_register_complete, state, 0);
     if (r < 0) {
-        k10_log_error("advertising register failed: %s",
-                      error.message ? error.message : strerror(-r));
+        k10_log_error("advertising register failed: %s", strerror(-r));
     }
 
 finish:
-    sd_bus_error_free(&error);
-    sd_bus_message_unref(reply);
     sd_bus_message_unref(message);
     return r;
 }
@@ -375,7 +393,7 @@ int k10_adv_start(sd_bus *bus, struct k10_adv_state *state, const struct k10_con
         return -EINVAL;
     }
 
-    if (state->registered) {
+    if (state->registered || state->pending) {
         return 0;
     }
 
@@ -391,15 +409,16 @@ int k10_adv_start(sd_bus *bus, struct k10_adv_state *state, const struct k10_con
         }
     }
 
-    r = k10_adv_register(bus, state, config->adapter);
+    r = k10_adv_register_async(bus, state, config->adapter);
     if (r < 0) {
         sd_bus_slot_unref(state->slot);
         state->slot = NULL;
         return r;
     }
 
-    state->registered = true;
-    k10_log_info("advertising registered on %s", config->adapter);
+    state->pending = true;
+    state->registered = false;
+    k10_log_info("advertising register requested on %s", config->adapter);
     return 0;
 }
 
@@ -410,11 +429,20 @@ int k10_adv_stop(sd_bus *bus, struct k10_adv_state *state) {
         return -EINVAL;
     }
 
-    if (!state->registered) {
+    if (!state->registered && !state->pending) {
         return 0;
     }
 
-    r = k10_adv_unregister(bus, state, state->config.adapter);
+    if (state->pending_slot != NULL) {
+        sd_bus_slot_unref(state->pending_slot);
+        state->pending_slot = NULL;
+        state->pending = false;
+    }
+
+    r = 0;
+    if (state->registered) {
+        r = k10_adv_unregister(bus, state, state->config.adapter);
+    }
     sd_bus_slot_unref(state->slot);
     state->slot = NULL;
     state->registered = false;

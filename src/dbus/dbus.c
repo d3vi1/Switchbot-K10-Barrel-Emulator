@@ -186,7 +186,7 @@ static int k10_dbus_append_status(sd_bus_message *msg, const struct k10_daemon_s
         return r;
     }
 
-    r = k10_dbus_append_kv_bool(msg, "advertising", state->advertising);
+    r = k10_dbus_append_kv_bool(msg, "advertising", state->adv.registered || state->adv.pending);
     if (r < 0) {
         return r;
     }
@@ -318,7 +318,7 @@ static void k10_dbus_emit_status_all(struct k10_dbus_context *ctx) {
 }
 
 static int k10_dbus_reload_config(struct k10_dbus_context *ctx) {
-    bool was_advertising = ctx->state->advertising;
+    bool was_advertising = ctx->state->adv.registered;
 
     if (k10_config_load(ctx->state->config_path, &ctx->state->config) != 0) {
         k10_log_error("dbus reload failed: %s", ctx->state->config_path);
@@ -328,10 +328,8 @@ static int k10_dbus_reload_config(struct k10_dbus_context *ctx) {
     if (was_advertising) {
         k10_adv_stop(ctx->bus, &ctx->state->adv);
         if (k10_adv_start(ctx->bus, &ctx->state->adv, &ctx->state->config) == 0) {
-            ctx->state->advertising = true;
             ctx->state->running = true;
         } else {
-            ctx->state->advertising = false;
             ctx->state->running = false;
         }
     }
@@ -374,12 +372,10 @@ static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret
     if (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &binding->ctx->state->config) ==
         0) {
         binding->ctx->state->running = true;
-        binding->ctx->state->advertising = true;
         binding->ctx->state->mode = binding->mode;
         ok = true;
     } else {
         binding->ctx->state->running = false;
-        binding->ctx->state->advertising = false;
         binding->ctx->state->mode = K10_MODE_NONE;
     }
 
@@ -396,7 +392,6 @@ static int k10_method_stop(sd_bus_message *m, void *userdata, sd_bus_error *ret_
 
     k10_adv_stop(binding->ctx->bus, &binding->ctx->state->adv);
     binding->ctx->state->running = false;
-    binding->ctx->state->advertising = false;
     binding->ctx->state->mode = K10_MODE_NONE;
 
     k10_log_info("dbus stop requested");

@@ -9,8 +9,10 @@
 
 struct k10_adv_state {
     bool registered;
+    bool pending;
     char object_path[128];
     sd_bus_slot *slot;
+    sd_bus_slot *pending_slot;
     struct k10_config config;
 };
 
