@@ -10,6 +10,11 @@
 struct k10_adv_state {
     bool registered;
     bool pending;
+    bool include_service_uuids;
+    bool include_service_data;
+    bool include_manufacturer_data;
+    bool include_local_name;
+    bool include_tx_power;
     char object_path[128];
     sd_bus_slot *slot;
     sd_bus_slot *pending_slot;
