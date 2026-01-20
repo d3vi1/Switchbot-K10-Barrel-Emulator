@@ -7,8 +7,10 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <time.h>
 
 #define K10_BLUEZ_SERVICE "org.bluez"
 #define K10_ADV_IFACE "org.bluez.LEAdvertisement1"
@@ -79,6 +81,20 @@ static int k10_parse_hex_bytes(const char *hex, struct k10_hex_bytes *out) {
 
     out->length = length;
     return 0;
+}
+
+static uint8_t k10_adv_random_battery(void) {
+    static bool seeded = false;
+    const int min = 50;
+    const int max = 75;
+    const int span = max - min + 1;
+
+    if (!seeded) {
+        srand((unsigned int)time(NULL));
+        seeded = true;
+    }
+
+    return (uint8_t)(min + (rand() % span));
 }
 
 static uint8_t k10_adv_next_seq(struct k10_adv_state *state) {
@@ -347,6 +363,10 @@ static int k10_adv_get_manufacturer_data(sd_bus *bus, const char *path, const ch
             } else {
                 memcpy(payload, bytes.data, bytes.length);
                 payload_len = bytes.length;
+            }
+
+            if (bytes.length == 8 && payload_len >= 9) {
+                payload[8] = k10_adv_random_battery();
             }
 
             r = sd_bus_message_open_container(reply, 'e', "qv");
