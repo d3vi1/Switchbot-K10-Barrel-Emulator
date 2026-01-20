@@ -15,6 +15,8 @@ struct k10_adv_state {
     bool include_manufacturer_data;
     bool include_local_name;
     bool include_tx_power;
+    const char *service_uuid_view[K10_MAX_UUIDS];
+    unsigned int service_uuid_view_count;
     char object_path[128];
     sd_bus_slot *slot;
     sd_bus_slot *pending_slot;
