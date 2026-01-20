@@ -2,11 +2,15 @@ adapter = "hci0"
 local_name = "WoS1MB"
 company_id = 0x0969
 manufacturer_mac_label = ""
+sweeper_mfg_suffix = "2064"
+barrel_mfg_suffix = "16230200"
 service_uuids = [
   "CBA20D00-224D-11E6-9FB8-0002A5D5C51B",
   "B000"
 ]
 fd3d_service_data_hex = "00"
+sweeper_fd3d_service_data_hex = "7d00"
+barrel_fd3d_service_data_hex = ""
 include_tx_power = true
 fw_major = 1
 fw_minor = 0

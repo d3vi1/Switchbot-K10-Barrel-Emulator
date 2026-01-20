@@ -15,8 +15,10 @@ static void k10_config_set_defaults(struct k10_config *config) {
     strncpy(config->adapter, "hci0", sizeof(config->adapter) - 1);
     strncpy(config->local_name, "WoS1MB", sizeof(config->local_name) - 1);
     config->company_id = 0x0969;
-    strncpy(config->sweeper_mfg_suffix, "022064", sizeof(config->sweeper_mfg_suffix) - 1);
-    strncpy(config->barrel_mfg_suffix, "0316230200", sizeof(config->barrel_mfg_suffix) - 1);
+    strncpy(config->sweeper_mfg_suffix, "2064", sizeof(config->sweeper_mfg_suffix) - 1);
+    strncpy(config->barrel_mfg_suffix, "16230200", sizeof(config->barrel_mfg_suffix) - 1);
+    strncpy(config->sweeper_fd3d_service_data_hex, "7d00",
+            sizeof(config->sweeper_fd3d_service_data_hex) - 1);
     config->include_tx_power = true;
     config->fw_major = 1;
     config->fw_minor = 0;
@@ -239,6 +241,16 @@ static int k10_apply_config_line(char *line, struct k10_config *config) {
                                 sizeof(config->fd3d_service_data_hex));
     }
 
+    if (strcmp(key, "sweeper_fd3d_service_data_hex") == 0) {
+        return k10_parse_string(value, config->sweeper_fd3d_service_data_hex,
+                                sizeof(config->sweeper_fd3d_service_data_hex));
+    }
+
+    if (strcmp(key, "barrel_fd3d_service_data_hex") == 0) {
+        return k10_parse_string(value, config->barrel_fd3d_service_data_hex,
+                                sizeof(config->barrel_fd3d_service_data_hex));
+    }
+
     if (strcmp(key, "include_tx_power") == 0) {
         return k10_parse_bool(value, &config->include_tx_power);
     }
@@ -358,6 +370,9 @@ int k10_config_save(const char *path, const struct k10_config *config) {
     fprintf(file, "]\n");
 
     fprintf(file, "fd3d_service_data_hex = \"%s\"\n", config->fd3d_service_data_hex);
+    fprintf(file, "sweeper_fd3d_service_data_hex = \"%s\"\n",
+            config->sweeper_fd3d_service_data_hex);
+    fprintf(file, "barrel_fd3d_service_data_hex = \"%s\"\n", config->barrel_fd3d_service_data_hex);
     fprintf(file, "include_tx_power = %s\n", config->include_tx_power ? "true" : "false");
     fprintf(file, "fw_major = %u\n", config->fw_major);
     fprintf(file, "fw_minor = %u\n", config->fw_minor);

@@ -15,6 +15,8 @@ struct k10_config {
     char service_uuids[K10_MAX_UUIDS][64];
     unsigned int service_uuid_count;
     char fd3d_service_data_hex[64];
+    char sweeper_fd3d_service_data_hex[64];
+    char barrel_fd3d_service_data_hex[64];
     bool include_tx_power;
     unsigned int fw_major;
     unsigned int fw_minor;

@@ -83,6 +83,25 @@ static void k10_apply_mode_mfg(struct k10_config *config, sd_bus *bus,
                          address, suffix);
 }
 
+static void k10_apply_mode_fd3d(struct k10_config *config, enum k10_emulator_mode mode) {
+    const char *value = NULL;
+
+    if (config == NULL) {
+        return;
+    }
+
+    if (mode == K10_MODE_SWEEPER) {
+        value = config->sweeper_fd3d_service_data_hex;
+    } else if (mode == K10_MODE_BARREL) {
+        value = config->barrel_fd3d_service_data_hex;
+    }
+
+    if (value != NULL && value[0] != '\0') {
+        strncpy(config->fd3d_service_data_hex, value, sizeof(config->fd3d_service_data_hex) - 1);
+        config->fd3d_service_data_hex[sizeof(config->fd3d_service_data_hex) - 1] = '\0';
+    }
+}
+
 static int k10_dbus_append_kv_string(sd_bus_message *msg, const char *key, const char *value) {
     int r = 0;
 
@@ -299,6 +318,18 @@ static int k10_dbus_append_config(sd_bus_message *msg, const struct k10_config *
         return r;
     }
 
+    r = k10_dbus_append_kv_string(msg, "sweeper_fd3d_service_data_hex",
+                                  config->sweeper_fd3d_service_data_hex);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_string(msg, "barrel_fd3d_service_data_hex",
+                                  config->barrel_fd3d_service_data_hex);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_string_array(msg, "service_uuids", service_uuids,
                                         config->service_uuid_count);
     if (r < 0) {
@@ -441,6 +472,7 @@ static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret
     runtime_config = binding->ctx->state->config;
     k10_apply_mode_name(&runtime_config, binding->mode);
     k10_apply_mode_mfg(&runtime_config, binding->ctx->bus, binding->mode);
+    k10_apply_mode_fd3d(&runtime_config, binding->mode);
 
     adv_ok = (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &runtime_config) == 0);
     gatt_ok = (k10_gatt_start(binding->ctx->bus, &binding->ctx->state->gatt, &runtime_config) == 0);
@@ -656,6 +688,14 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
         } else if (strcmp(key, "barrel_mfg_suffix") == 0) {
             r = k10_dbus_apply_string(m, updated_config.barrel_mfg_suffix,
                                       sizeof(updated_config.barrel_mfg_suffix));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "sweeper_fd3d_service_data_hex") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.sweeper_fd3d_service_data_hex,
+                                      sizeof(updated_config.sweeper_fd3d_service_data_hex));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "barrel_fd3d_service_data_hex") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.barrel_fd3d_service_data_hex,
+                                      sizeof(updated_config.barrel_fd3d_service_data_hex));
             entry_updated = (r >= 0);
         } else if (strcmp(key, "service_uuids") == 0) {
             r = k10_dbus_apply_uuid_array(m, &updated_config);

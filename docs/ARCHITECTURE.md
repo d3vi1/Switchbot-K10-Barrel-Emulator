@@ -161,8 +161,12 @@ Config keys (initial set):
 - `local_name` (string)
 - `company_id` (integer, hex allowed)
 - `manufacturer_mac_label` (string, hex bytes) or empty for auto
+- `sweeper_mfg_suffix` (string, hex bytes, appended after MAC; SEQ inserted automatically)
+- `barrel_mfg_suffix` (string, hex bytes, appended after MAC; SEQ inserted automatically)
 - `service_uuids` (array of strings)
 - `fd3d_service_data_hex` (string hex)
+- `sweeper_fd3d_service_data_hex` (string hex; overrides `fd3d_service_data_hex` in sweeper mode when set)
+- `barrel_fd3d_service_data_hex` (string hex; overrides `fd3d_service_data_hex` in barrel mode when set)
 - `include_tx_power` (bool)
 - `fw_major` / `fw_minor` (int)
 
