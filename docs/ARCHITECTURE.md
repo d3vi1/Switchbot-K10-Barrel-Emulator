@@ -5,7 +5,7 @@
 - Emulate a SwitchBot K10+ dock ("barrel") over BLE on Linux/BlueZ.
 - Provide a stable control surface for tests and Cockpit UI via D-Bus.
 - Persist config in `/etc` and allow runtime updates through D-Bus.
-- Keep runtime dependencies minimal (C, GLib, D-Bus, BlueZ).
+- Keep runtime dependencies minimal (C, systemd sd-bus/journald, BlueZ).
 - Support SELinux and systemd hardening on Fedora.
 
 ## Runtime components
@@ -19,14 +19,15 @@
 - Logs all GATT traffic and state changes to journald.
 - Exposes a control API over D-Bus (see below).
 
-Planned entry points:
+Entry points:
 
 - `src/daemon/main.c` -> `main()`
 - `src/daemon/daemon.c` -> `k10_daemon_run()`
- - `src/config/config.c` -> `k10_config_load()`
- - `src/log/log.c` -> `k10_log_info()` / `k10_log_error()`
+- `src/config/config.c` -> `k10_config_load()` / `k10_config_save()`
+- `src/dbus/dbus.c` -> `k10_dbus_run()` / `k10_method_start()` / `k10_method_set_config()`
+- `src/log/log.c` -> `k10_log_info()` / `k10_log_error()`
 
-### Directory layout (planned)
+### Directory layout
 
 - `src/daemon/` (lifecycle, systemd integration)
 - `src/ble/` (BlueZ D-Bus: advertising + GATT)
@@ -46,7 +47,7 @@ Planned entry points:
 - Calls `StartAdvertising`, `StopAdvertising`, and config methods.
 - Prints daemon status for diagnostics.
 
-Planned entry points:
+Entry points:
 
 - `src/cli/main.c` -> `main()`
 
@@ -114,47 +115,46 @@ This keeps Cockpit and CLI implementations straightforward.
 writing config values. Writes **must** persist to `/etc` and trigger a live
 reload when possible.
 
-Planned methods:
+Methods:
 
-- `GetAll() -> a{sv}` (entire config)
-- `Get(s key) -> v`
-- `Set(s key, v value) -> b` (returns success)
-- `SetAll(a{sv} values) -> b` (batch update)
+- `GetConfig() -> a{sv}` (entire config)
+- `SetConfig(a{sv} values) -> b` (batch update)
 - `Reload() -> b` (re-read file)
 
-Planned signals:
+Signals:
 
 - `ConfigChanged(a{sv} values)`
 
-Planned code paths:
+Code paths:
 
-- `src/dbus/config_iface.c` -> `k10_dbus_config_get()` / `k10_dbus_config_set()`
+- `src/dbus/dbus.c` -> `k10_method_get_config()` / `k10_method_set_config()`
 
 ### Control interface
 
 Control methods live on the SweeperMini/SweeperMiniBarrel interfaces to keep
 compatibility with the Cockpit UI and scripting use cases.
 
-Planned methods:
+Methods:
 
-- `StartAdvertising() -> b`
-- `StopAdvertising() -> b`
-- `GetStatus() -> a{sv}` (includes adapter, advertising state, active config hash)
+- `Start() -> b`
+- `Stop() -> b`
+- `Reload() -> b` (re-read config)
+- `GetStatus() -> a{sv}` (includes mode/adapter/running)
 
-Planned signals:
+Signals:
 
 - `StatusChanged(a{sv} status)`
 
-Planned code paths:
+Code paths:
 
-- `src/dbus/control_iface.c` -> `k10_dbus_start_adv()` / `k10_dbus_stop_adv()`
+- `src/dbus/dbus.c` -> `k10_method_start()` / `k10_method_stop()`
 
 ## Config file
 
 - Path: `/etc/k10-barrel-emulator/config.toml`
 - Must be writable by the daemon to support runtime updates.
 
-Planned config keys (initial set):
+Config keys (initial set):
 
 - `adapter` (string, e.g. `"hci0"`)
 - `local_name` (string)
@@ -169,7 +169,7 @@ Config keys are exposed one-for-one over D-Bus. `Set()` must validate types,
 persist to the file, and trigger a non-destructive reload (or a full restart if
 required by BlueZ).
 
-Planned code paths:
+Code paths:
 
 - `src/config/config.c` -> `k10_config_load()` / `k10_config_save()`
 
