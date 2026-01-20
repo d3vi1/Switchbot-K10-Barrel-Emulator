@@ -1,7 +1,7 @@
 #include "k10_barrel/dbus.h"
 #include "k10_barrel/advertising.h"
-
 #include "k10_barrel/config.h"
+#include "k10_barrel/gatt.h"
 #include "k10_barrel/log.h"
 
 #include <signal.h>
@@ -319,6 +319,7 @@ static void k10_dbus_emit_status_all(struct k10_dbus_context *ctx) {
 
 static int k10_dbus_reload_config(struct k10_dbus_context *ctx) {
     bool was_advertising = ctx->state->adv.registered;
+    bool was_gatt = ctx->state->gatt.registered;
 
     if (k10_config_load(ctx->state->config_path, &ctx->state->config) != 0) {
         k10_log_error("dbus reload failed: %s", ctx->state->config_path);
@@ -328,6 +329,14 @@ static int k10_dbus_reload_config(struct k10_dbus_context *ctx) {
     if (was_advertising) {
         k10_adv_stop(ctx->bus, &ctx->state->adv);
         if (k10_adv_start(ctx->bus, &ctx->state->adv, &ctx->state->config) == 0) {
+            ctx->state->running = true;
+        } else {
+            ctx->state->running = false;
+        }
+    }
+    if (was_gatt) {
+        k10_gatt_stop(ctx->bus, &ctx->state->gatt);
+        if (k10_gatt_start(ctx->bus, &ctx->state->gatt, &ctx->state->config) == 0) {
             ctx->state->running = true;
         } else {
             ctx->state->running = false;
@@ -366,15 +375,27 @@ static int k10_method_get_status(sd_bus_message *m, void *userdata, sd_bus_error
 static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     struct k10_control_binding *binding = userdata;
     bool ok = false;
+    bool adv_ok = false;
+    bool gatt_ok = false;
 
     (void)ret_error;
 
-    if (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &binding->ctx->state->config) ==
-        0) {
+    adv_ok = (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv,
+                            &binding->ctx->state->config) == 0);
+    gatt_ok = (k10_gatt_start(binding->ctx->bus, &binding->ctx->state->gatt,
+                              &binding->ctx->state->config) == 0);
+
+    if (adv_ok && gatt_ok) {
         binding->ctx->state->running = true;
         binding->ctx->state->mode = binding->mode;
         ok = true;
     } else {
+        if (adv_ok) {
+            k10_adv_stop(binding->ctx->bus, &binding->ctx->state->adv);
+        }
+        if (gatt_ok) {
+            k10_gatt_stop(binding->ctx->bus, &binding->ctx->state->gatt);
+        }
         binding->ctx->state->running = false;
         binding->ctx->state->mode = K10_MODE_NONE;
     }
@@ -391,6 +412,7 @@ static int k10_method_stop(sd_bus_message *m, void *userdata, sd_bus_error *ret_
     (void)ret_error;
 
     k10_adv_stop(binding->ctx->bus, &binding->ctx->state->adv);
+    k10_gatt_stop(binding->ctx->bus, &binding->ctx->state->gatt);
     binding->ctx->state->running = false;
     binding->ctx->state->mode = K10_MODE_NONE;
 

@@ -9,6 +9,7 @@ add_executable(k10-barrel-emulatord
     src/daemon/main.c
     src/daemon/daemon.c
     src/ble/advertising.c
+    src/ble/gatt.c
     src/dbus/dbus.c
     src/config/config.c
     src/log/log.c
