@@ -124,13 +124,16 @@ static size_t k10_adv_uuid_list_length(const struct k10_config *config) {
         }
     }
 
-    return (count16 ? (2 + 2 * count16) : 0) + (count32 ? (2 + 4 * count32) : 0) +
+    return (count16 ? (2 + 2 * count16) : 0) +
+           (count32 ? (2 + 4 * count32) : 0) +
            (count128 ? (2 + 16 * count128) : 0);
 }
 
 static size_t k10_adv_estimated_length(const struct k10_config *config,
-                                       bool include_service_uuids, bool include_service_data,
-                                       bool include_manufacturer, bool include_local_name,
+                                       bool include_service_uuids,
+                                       bool include_service_data,
+                                       bool include_manufacturer,
+                                       bool include_local_name,
                                        bool include_tx_power) {
     struct k10_hex_bytes bytes = {0};
     size_t length = K10_ADV_FLAGS_LEN;
@@ -144,12 +147,14 @@ static size_t k10_adv_estimated_length(const struct k10_config *config,
     }
 
     if (include_manufacturer && config->manufacturer_mac_label[0] != '\0' &&
-        k10_parse_hex_bytes(config->manufacturer_mac_label, &bytes) == 0 && bytes.length > 0) {
+        k10_parse_hex_bytes(config->manufacturer_mac_label, &bytes) == 0 &&
+        bytes.length > 0) {
         length += 4 + bytes.length;
     }
 
     if (include_service_data && config->fd3d_service_data_hex[0] != '\0' &&
-        k10_parse_hex_bytes(config->fd3d_service_data_hex, &bytes) == 0 && bytes.length > 0) {
+        k10_parse_hex_bytes(config->fd3d_service_data_hex, &bytes) == 0 &&
+        bytes.length > 0) {
         length += 4 + bytes.length;
     }
 
@@ -169,53 +174,66 @@ static void k10_adv_select_fields(struct k10_adv_state *state) {
     state->include_local_name = state->config.local_name[0] != '\0';
     state->include_tx_power = state->config.include_tx_power;
 
-    length = k10_adv_estimated_length(&state->config, state->include_service_uuids,
-                                      state->include_service_data, state->include_manufacturer_data,
-                                      state->include_local_name, state->include_tx_power);
+    length = k10_adv_estimated_length(&state->config,
+                                      state->include_service_uuids,
+                                      state->include_service_data,
+                                      state->include_manufacturer_data,
+                                      state->include_local_name,
+                                      state->include_tx_power);
 
     if (length > K10_ADV_MAX_LEN && state->include_service_uuids) {
-        k10_log_warn("advertising payload too large (%zu); disabling service UUIDs", length);
+        k10_log_info("advertising payload too large (%zu); disabling service UUIDs", length);
         state->include_service_uuids = false;
-        length = k10_adv_estimated_length(&state->config, state->include_service_uuids,
+        length = k10_adv_estimated_length(&state->config,
+                                          state->include_service_uuids,
                                           state->include_service_data,
                                           state->include_manufacturer_data,
-                                          state->include_local_name, state->include_tx_power);
+                                          state->include_local_name,
+                                          state->include_tx_power);
     }
 
     if (length > K10_ADV_MAX_LEN && state->include_service_data) {
-        k10_log_warn("advertising payload too large (%zu); disabling service data", length);
+        k10_log_info("advertising payload too large (%zu); disabling service data", length);
         state->include_service_data = false;
-        length = k10_adv_estimated_length(&state->config, state->include_service_uuids,
+        length = k10_adv_estimated_length(&state->config,
+                                          state->include_service_uuids,
                                           state->include_service_data,
                                           state->include_manufacturer_data,
-                                          state->include_local_name, state->include_tx_power);
+                                          state->include_local_name,
+                                          state->include_tx_power);
     }
 
     if (length > K10_ADV_MAX_LEN && state->include_manufacturer_data) {
-        k10_log_warn("advertising payload too large (%zu); disabling manufacturer data", length);
+        k10_log_info("advertising payload too large (%zu); disabling manufacturer data", length);
         state->include_manufacturer_data = false;
-        length = k10_adv_estimated_length(&state->config, state->include_service_uuids,
+        length = k10_adv_estimated_length(&state->config,
+                                          state->include_service_uuids,
                                           state->include_service_data,
                                           state->include_manufacturer_data,
-                                          state->include_local_name, state->include_tx_power);
+                                          state->include_local_name,
+                                          state->include_tx_power);
     }
 
     if (length > K10_ADV_MAX_LEN && state->include_tx_power) {
-        k10_log_warn("advertising payload too large (%zu); disabling TX power", length);
+        k10_log_info("advertising payload too large (%zu); disabling TX power", length);
         state->include_tx_power = false;
-        length = k10_adv_estimated_length(&state->config, state->include_service_uuids,
+        length = k10_adv_estimated_length(&state->config,
+                                          state->include_service_uuids,
                                           state->include_service_data,
                                           state->include_manufacturer_data,
-                                          state->include_local_name, state->include_tx_power);
+                                          state->include_local_name,
+                                          state->include_tx_power);
     }
 
     if (length > K10_ADV_MAX_LEN && state->include_local_name) {
-        k10_log_warn("advertising payload too large (%zu); disabling local name", length);
+        k10_log_info("advertising payload too large (%zu); disabling local name", length);
         state->include_local_name = false;
-        length = k10_adv_estimated_length(&state->config, state->include_service_uuids,
+        length = k10_adv_estimated_length(&state->config,
+                                          state->include_service_uuids,
                                           state->include_service_data,
                                           state->include_manufacturer_data,
-                                          state->include_local_name, state->include_tx_power);
+                                          state->include_local_name,
+                                          state->include_tx_power);
     }
 
     if (length > K10_ADV_MAX_LEN) {
