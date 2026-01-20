@@ -37,6 +37,8 @@ struct k10_gatt_char_ctx {
 static struct k10_gatt_char_ctx k10_rx_ctx;
 static struct k10_gatt_char_ctx k10_tx_ctx;
 
+static void k10_gatt_log_value(const char *label, const uint8_t *value, size_t length);
+
 static int k10_gatt_service_get_uuid(sd_bus *bus, const char *path, const char *interface,
                                      const char *property, sd_bus_message *reply, void *userdata,
                                      sd_bus_error *ret_error) {
