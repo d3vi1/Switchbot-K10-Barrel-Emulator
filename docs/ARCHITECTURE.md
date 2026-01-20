@@ -25,6 +25,7 @@ Entry points:
 - `src/daemon/daemon.c` -> `k10_daemon_run()`
 - `src/config/config.c` -> `k10_config_load()` / `k10_config_save()`
 - `src/dbus/dbus.c` -> `k10_dbus_run()` / `k10_method_start()` / `k10_method_set_config()`
+- `src/ble/advertising.c` -> `k10_adv_start()` / `k10_adv_stop()`
 - `src/log/log.c` -> `k10_log_info()` / `k10_log_error()`
 
 ### Directory layout
@@ -139,7 +140,7 @@ Methods:
 - `Start() -> b`
 - `Stop() -> b`
 - `Reload() -> b` (re-read config)
-- `GetStatus() -> a{sv}` (includes mode/adapter/running)
+- `GetStatus() -> a{sv}` (includes mode/adapter/running/advertising)
 
 Signals:
 

@@ -1,4 +1,5 @@
 #include "k10_barrel/dbus.h"
+#include "k10_barrel/advertising.h"
 
 #include "k10_barrel/config.h"
 #include "k10_barrel/log.h"
@@ -185,6 +186,11 @@ static int k10_dbus_append_status(sd_bus_message *msg, const struct k10_daemon_s
         return r;
     }
 
+    r = k10_dbus_append_kv_bool(msg, "advertising", state->advertising);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_string(msg, "mode", k10_mode_to_string(state->mode));
     if (r < 0) {
         return r;
@@ -312,9 +318,22 @@ static void k10_dbus_emit_status_all(struct k10_dbus_context *ctx) {
 }
 
 static int k10_dbus_reload_config(struct k10_dbus_context *ctx) {
+    bool was_advertising = ctx->state->advertising;
+
     if (k10_config_load(ctx->state->config_path, &ctx->state->config) != 0) {
         k10_log_error("dbus reload failed: %s", ctx->state->config_path);
         return -1;
+    }
+
+    if (was_advertising) {
+        k10_adv_stop(ctx->bus, &ctx->state->adv);
+        if (k10_adv_start(ctx->bus, &ctx->state->adv, &ctx->state->config) == 0) {
+            ctx->state->advertising = true;
+            ctx->state->running = true;
+        } else {
+            ctx->state->advertising = false;
+            ctx->state->running = false;
+        }
     }
 
     k10_log_info("dbus reload: %s", ctx->state->config_path);
@@ -348,16 +367,26 @@ static int k10_method_get_status(sd_bus_message *m, void *userdata, sd_bus_error
 
 static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     struct k10_control_binding *binding = userdata;
+    bool ok = false;
 
     (void)ret_error;
 
-    binding->ctx->state->running = true;
-    binding->ctx->state->mode = binding->mode;
+    if (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &binding->ctx->state->config) ==
+        0) {
+        binding->ctx->state->running = true;
+        binding->ctx->state->advertising = true;
+        binding->ctx->state->mode = binding->mode;
+        ok = true;
+    } else {
+        binding->ctx->state->running = false;
+        binding->ctx->state->advertising = false;
+        binding->ctx->state->mode = K10_MODE_NONE;
+    }
 
     k10_log_info("dbus start requested: mode=%s", k10_mode_to_string(binding->mode));
     k10_dbus_emit_status_all(binding->ctx);
 
-    return sd_bus_reply_method_return(m, "b", 1);
+    return sd_bus_reply_method_return(m, "b", ok);
 }
 
 static int k10_method_stop(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
@@ -365,7 +394,9 @@ static int k10_method_stop(sd_bus_message *m, void *userdata, sd_bus_error *ret_
 
     (void)ret_error;
 
+    k10_adv_stop(binding->ctx->bus, &binding->ctx->state->adv);
     binding->ctx->state->running = false;
+    binding->ctx->state->advertising = false;
     binding->ctx->state->mode = K10_MODE_NONE;
 
     k10_log_info("dbus stop requested");
