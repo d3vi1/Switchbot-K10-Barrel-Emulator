@@ -8,6 +8,7 @@
 #include <strings.h>
 
 #define K10_MAX_LINE 256
+#define K10_MAX_VALUE 1024
 
 static void k10_config_set_defaults(struct k10_config *config) {
     memset(config, 0, sizeof(*config));
@@ -106,6 +107,21 @@ static int k10_parse_string(char *value, char *out, size_t out_size) {
 static void k10_reset_service_uuids(struct k10_config *config) {
     config->service_uuid_count = 0;
     memset(config->service_uuids, 0, sizeof(config->service_uuids));
+}
+
+static char *k10_strip_comment(char *line) {
+    char *comment = NULL;
+
+    if (line == NULL) {
+        return line;
+    }
+
+    comment = strpbrk(line, "#;");
+    if (comment != NULL) {
+        *comment = '\0';
+    }
+
+    return k10_trim(line);
 }
 
 static int k10_parse_service_uuids(char *value, struct k10_config *config) {
@@ -246,17 +262,52 @@ int k10_config_load(const char *path, struct k10_config *out_config) {
     }
 
     while (fgets(line, sizeof(line), file) != NULL) {
-        char *comment = NULL;
-        char *cursor = line;
+        char *cursor = k10_strip_comment(line);
 
-        comment = strpbrk(cursor, "#;");
-        if (comment != NULL) {
-            *comment = '\0';
-        }
-
-        cursor = k10_trim(cursor);
         if (*cursor == '\0') {
             continue;
+        }
+
+        if (strncmp(cursor, "service_uuids", strlen("service_uuids")) == 0) {
+            char *equals = strchr(cursor, '=');
+
+            if (equals != NULL) {
+                char value[K10_MAX_VALUE];
+                size_t used = 0;
+                char *value_start = k10_trim(equals + 1);
+
+                if (strchr(value_start, '[') != NULL && strchr(value_start, ']') == NULL) {
+                    used = snprintf(value, sizeof(value), "%s", value_start);
+                    while (fgets(line, sizeof(line), file) != NULL) {
+                        char *next = k10_strip_comment(line);
+
+                        if (*next == '\0') {
+                            continue;
+                        }
+
+                        if (used + 2 < sizeof(value)) {
+                            value[used++] = ' ';
+                            value[used] = '\0';
+                        }
+
+                        if (used + strlen(next) < sizeof(value)) {
+                            strncat(value, next, sizeof(value) - used - 1);
+                            used = strlen(value);
+                        }
+
+                        if (strchr(next, ']') != NULL) {
+                            break;
+                        }
+                    }
+
+                    if (used > 0) {
+                        char combined[K10_MAX_VALUE + 32];
+                        snprintf(combined, sizeof(combined), "service_uuids = %s", value);
+                        k10_apply_config_line(combined, out_config);
+                        continue;
+                    }
+                }
+            }
         }
 
         k10_apply_config_line(cursor, out_config);
