@@ -30,6 +30,8 @@ add_executable(k10-barrel-emulatorctl
 target_include_directories(k10-barrel-emulatorctl PRIVATE include)
 
 target_compile_options(k10-barrel-emulatorctl PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(k10-barrel-emulatorctl PRIVATE ${SYSTEMD_INCLUDE_DIRS})
+target_link_libraries(k10-barrel-emulatorctl PRIVATE ${SYSTEMD_LIBRARIES})
 
 install(TARGETS k10-barrel-emulatord k10-barrel-emulatorctl
     RUNTIME DESTINATION bin
