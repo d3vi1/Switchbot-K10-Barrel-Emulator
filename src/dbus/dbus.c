@@ -4,6 +4,7 @@
 #include "k10_barrel/gatt.h"
 #include "k10_barrel/log.h"
 
+#include <ctype.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -25,6 +26,9 @@ struct k10_control_binding {
 
 static volatile sig_atomic_t k10_should_exit = 0;
 
+static int k10_get_adapter_address(sd_bus *bus, const char *adapter, char *out, size_t out_size);
+static void k10_format_mfg_label(char *out, size_t out_size, const char *mac, const char *suffix);
+
 static const char *k10_mode_to_string(enum k10_emulator_mode mode) {
     switch (mode) {
     case K10_MODE_SWEEPER:
@@ -43,7 +47,7 @@ static void k10_apply_mode_name(struct k10_config *config, enum k10_emulator_mod
 
     switch (mode) {
     case K10_MODE_SWEEPER:
-        strncpy(config->local_name, "WoS1MINI", sizeof(config->local_name) - 1);
+        strncpy(config->local_name, "WoS1MI", sizeof(config->local_name) - 1);
         config->local_name[sizeof(config->local_name) - 1] = '\0';
         break;
     case K10_MODE_BARREL:
