@@ -179,6 +179,9 @@ static int k10_gatt_char_get_value(sd_bus *bus, const char *path, const char *in
 }
 
 static int k10_gatt_emit_value(sd_bus *bus, const struct k10_gatt_char_ctx *ctx) {
+    if (ctx != NULL && ctx->kind == K10_CHAR_TX && ctx->state != NULL) {
+        k10_gatt_log_value("gatt notify (tx)", ctx->state->tx_value, ctx->state->tx_len);
+    }
     return sd_bus_emit_properties_changed(bus, ctx->path, K10_GATT_CHAR_IFACE, "Value", NULL);
 }
 
