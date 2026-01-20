@@ -81,6 +81,26 @@ static int k10_parse_hex_bytes(const char *hex, struct k10_hex_bytes *out) {
     return 0;
 }
 
+static uint8_t k10_adv_next_seq(struct k10_adv_state *state) {
+    uint8_t current = 1;
+
+    if (state == NULL) {
+        return 1;
+    }
+
+    if (state->mfg_seq == 0) {
+        state->mfg_seq = 1;
+    }
+
+    current = state->mfg_seq;
+    state->mfg_seq++;
+    if (state->mfg_seq == 0) {
+        state->mfg_seq = 1;
+    }
+
+    return current;
+}
+
 static bool k10_uuid_is_hex(const char *uuid) {
     for (size_t i = 0; uuid[i] != '\0'; i++) {
         if (k10_hex_value(uuid[i]) < 0) {
@@ -148,7 +168,11 @@ static size_t k10_adv_estimated_length(const struct k10_config *config,
 
     if (include_manufacturer && config->manufacturer_mac_label[0] != '\0' &&
         k10_parse_hex_bytes(config->manufacturer_mac_label, &bytes) == 0 && bytes.length > 0) {
-        length += 4 + bytes.length;
+        if (bytes.length >= 6) {
+            length += 4 + bytes.length + 1;
+        } else {
+            length += 4 + bytes.length;
+        }
     }
 
     if (include_service_data && config->fd3d_service_data_hex[0] != '\0' &&
@@ -294,6 +318,9 @@ static int k10_adv_get_manufacturer_data(sd_bus *bus, const char *path, const ch
                                          void *userdata, sd_bus_error *ret_error) {
     struct k10_adv_state *state = userdata;
     struct k10_hex_bytes bytes = {0};
+    uint8_t payload[sizeof(bytes.data) + 1];
+    size_t payload_len = 0;
+    uint8_t seq = 1;
 
     (void)bus;
     (void)path;
@@ -309,6 +336,19 @@ static int k10_adv_get_manufacturer_data(sd_bus *bus, const char *path, const ch
     if (state->include_manufacturer_data && state->config.manufacturer_mac_label[0] != '\0') {
         if (k10_parse_hex_bytes(state->config.manufacturer_mac_label, &bytes) == 0 &&
             bytes.length > 0) {
+            if (bytes.length >= 6) {
+                seq = k10_adv_next_seq(state);
+                memcpy(payload, bytes.data, 6);
+                payload[6] = seq;
+                if (bytes.length > 6) {
+                    memcpy(payload + 7, bytes.data + 6, bytes.length - 6);
+                }
+                payload_len = bytes.length + 1;
+            } else {
+                memcpy(payload, bytes.data, bytes.length);
+                payload_len = bytes.length;
+            }
+
             r = sd_bus_message_open_container(reply, 'e', "qv");
             if (r < 0) {
                 return r;
@@ -319,7 +359,7 @@ static int k10_adv_get_manufacturer_data(sd_bus *bus, const char *path, const ch
                 return r;
             }
 
-            r = k10_adv_append_variant_bytes(reply, bytes.data, bytes.length);
+            r = k10_adv_append_variant_bytes(reply, payload, payload_len);
             if (r < 0) {
                 return r;
             }
@@ -562,6 +602,7 @@ int k10_adv_start(sd_bus *bus, struct k10_adv_state *state, const struct k10_con
 
     k10_adv_set_defaults(state);
     state->config = *config;
+    state->mfg_seq = 1;
     k10_adv_select_fields(state);
 
     if (state->slot == NULL) {

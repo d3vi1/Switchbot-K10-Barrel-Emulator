@@ -22,3 +22,6 @@ ansible/
 # Build artifacts
 .build/
 build/
+
+# Research sources (local-only)
+.research_sources/

@@ -2,6 +2,7 @@
 #define K10_BARREL_ADVERTISING_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <systemd/sd-bus.h>
 
@@ -15,6 +16,7 @@ struct k10_adv_state {
     bool include_manufacturer_data;
     bool include_local_name;
     bool include_tx_power;
+    uint8_t mfg_seq;
     const char *service_uuid_view[K10_MAX_UUIDS];
     unsigned int service_uuid_view_count;
     char object_path[128];
