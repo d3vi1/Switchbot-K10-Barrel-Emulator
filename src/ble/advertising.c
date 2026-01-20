@@ -190,6 +190,9 @@ static void k10_adv_select_fields(struct k10_adv_state *state) {
     state->include_local_name = state->config.local_name[0] != '\0';
     state->include_tx_power = state->config.include_tx_power;
 
+    state->service_uuid_view_count = 0;
+    state->include_service_uuids = false;
+
     length = k10_adv_estimated_length(&state->config, state, state->include_service_uuids,
                                       state->include_service_data, state->include_manufacturer_data,
                                       state->include_local_name, state->include_tx_power);

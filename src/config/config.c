@@ -15,6 +15,8 @@ static void k10_config_set_defaults(struct k10_config *config) {
     strncpy(config->adapter, "hci0", sizeof(config->adapter) - 1);
     strncpy(config->local_name, "WoS1MB", sizeof(config->local_name) - 1);
     config->company_id = 0x0969;
+    strncpy(config->sweeper_mfg_suffix, "022064", sizeof(config->sweeper_mfg_suffix) - 1);
+    strncpy(config->barrel_mfg_suffix, "0316230200", sizeof(config->barrel_mfg_suffix) - 1);
     config->include_tx_power = true;
     config->fw_major = 1;
     config->fw_minor = 0;
@@ -218,6 +220,16 @@ static int k10_apply_config_line(char *line, struct k10_config *config) {
                                 sizeof(config->manufacturer_mac_label));
     }
 
+    if (strcmp(key, "sweeper_mfg_suffix") == 0) {
+        return k10_parse_string(value, config->sweeper_mfg_suffix,
+                                sizeof(config->sweeper_mfg_suffix));
+    }
+
+    if (strcmp(key, "barrel_mfg_suffix") == 0) {
+        return k10_parse_string(value, config->barrel_mfg_suffix,
+                                sizeof(config->barrel_mfg_suffix));
+    }
+
     if (strcmp(key, "service_uuids") == 0) {
         return k10_parse_service_uuids(value, config);
     }
@@ -333,6 +345,8 @@ int k10_config_save(const char *path, const struct k10_config *config) {
     fprintf(file, "local_name = \"%s\"\n", config->local_name);
     fprintf(file, "company_id = 0x%04X\n", config->company_id);
     fprintf(file, "manufacturer_mac_label = \"%s\"\n", config->manufacturer_mac_label);
+    fprintf(file, "sweeper_mfg_suffix = \"%s\"\n", config->sweeper_mfg_suffix);
+    fprintf(file, "barrel_mfg_suffix = \"%s\"\n", config->barrel_mfg_suffix);
 
     fprintf(file, "service_uuids = [");
     for (unsigned int i = 0; i < config->service_uuid_count; i++) {

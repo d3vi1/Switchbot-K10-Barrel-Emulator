@@ -55,6 +55,29 @@ static void k10_apply_mode_name(struct k10_config *config, enum k10_emulator_mod
     }
 }
 
+static void k10_apply_mode_mfg(struct k10_config *config, sd_bus *bus,
+                               enum k10_emulator_mode mode) {
+    const char *suffix = NULL;
+    char address[32] = {0};
+
+    if (config == NULL || bus == NULL) {
+        return;
+    }
+
+    if (k10_get_adapter_address(bus, config->adapter, address, sizeof(address)) != 0) {
+        return;
+    }
+
+    if (mode == K10_MODE_SWEEPER) {
+        suffix = config->sweeper_mfg_suffix;
+    } else if (mode == K10_MODE_BARREL) {
+        suffix = config->barrel_mfg_suffix;
+    }
+
+    k10_format_mfg_label(config->manufacturer_mac_label, sizeof(config->manufacturer_mac_label),
+                         address, suffix);
+}
+
 static int k10_dbus_append_kv_string(sd_bus_message *msg, const char *key, const char *value) {
     int r = 0;
 
@@ -261,6 +284,16 @@ static int k10_dbus_append_config(sd_bus_message *msg, const struct k10_config *
         return r;
     }
 
+    r = k10_dbus_append_kv_string(msg, "sweeper_mfg_suffix", config->sweeper_mfg_suffix);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_string(msg, "barrel_mfg_suffix", config->barrel_mfg_suffix);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_string_array(msg, "service_uuids", service_uuids,
                                         config->service_uuid_count);
     if (r < 0) {
@@ -402,6 +435,7 @@ static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret
 
     runtime_config = binding->ctx->state->config;
     k10_apply_mode_name(&runtime_config, binding->mode);
+    k10_apply_mode_mfg(&runtime_config, binding->ctx->bus, binding->mode);
 
     adv_ok = (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &runtime_config) == 0);
     gatt_ok = (k10_gatt_start(binding->ctx->bus, &binding->ctx->state->gatt, &runtime_config) == 0);
@@ -610,6 +644,14 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
             r = k10_dbus_apply_string(m, updated_config.manufacturer_mac_label,
                                       sizeof(updated_config.manufacturer_mac_label));
             entry_updated = (r >= 0);
+        } else if (strcmp(key, "sweeper_mfg_suffix") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.sweeper_mfg_suffix,
+                                      sizeof(updated_config.sweeper_mfg_suffix));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "barrel_mfg_suffix") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.barrel_mfg_suffix,
+                                      sizeof(updated_config.barrel_mfg_suffix));
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "service_uuids") == 0) {
             r = k10_dbus_apply_uuid_array(m, &updated_config);
             entry_updated = (r >= 0);
@@ -698,6 +740,79 @@ static const sd_bus_vtable k10_config_vtable[] = {
 static void k10_handle_signal(int signal_value) {
     (void)signal_value;
     k10_should_exit = 1;
+}
+
+static int k10_get_adapter_address(sd_bus *bus, const char *adapter, char *out, size_t out_size) {
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message *reply = NULL;
+    const char *address = NULL;
+    char adapter_path[128];
+    int r = 0;
+
+    if (bus == NULL || adapter == NULL || out == NULL || out_size == 0) {
+        return -EINVAL;
+    }
+
+    snprintf(adapter_path, sizeof(adapter_path), "/org/bluez/%s", adapter);
+
+    r = sd_bus_call_method(bus, "org.bluez", adapter_path, "org.freedesktop.DBus.Properties", "Get",
+                           &error, &reply, "ss", "org.bluez.Adapter1", "Address");
+    if (r < 0) {
+        k10_log_error("adapter address lookup failed: %s",
+                      error.message ? error.message : strerror(-r));
+        sd_bus_error_free(&error);
+        sd_bus_message_unref(reply);
+        return r;
+    }
+
+    r = sd_bus_message_enter_container(reply, 'v', "s");
+    if (r < 0) {
+        sd_bus_message_unref(reply);
+        return r;
+    }
+
+    r = sd_bus_message_read(reply, "s", &address);
+    if (r < 0) {
+        sd_bus_message_unref(reply);
+        return r;
+    }
+
+    strncpy(out, address ? address : "", out_size - 1);
+    out[out_size - 1] = '\0';
+
+    sd_bus_message_unref(reply);
+    return 0;
+}
+
+static void k10_format_mfg_label(char *out, size_t out_size, const char *mac, const char *suffix) {
+    size_t used = 0;
+
+    if (out == NULL || out_size == 0) {
+        return;
+    }
+
+    out[0] = '\0';
+
+    if (mac != NULL) {
+        for (size_t i = 0; mac[i] != '\0' && used + 1 < out_size; i++) {
+            if (mac[i] == ':' || mac[i] == '-') {
+                continue;
+            }
+            out[used++] = (char)toupper((unsigned char)mac[i]);
+        }
+    }
+
+    out[used] = '\0';
+
+    if (suffix != NULL && suffix[0] != '\0' && used + 1 < out_size) {
+        for (size_t i = 0; suffix[i] != '\0' && used + 1 < out_size; i++) {
+            if (suffix[i] == ':' || suffix[i] == '-' || isspace((unsigned char)suffix[i])) {
+                continue;
+            }
+            out[used++] = (char)toupper((unsigned char)suffix[i]);
+        }
+        out[used] = '\0';
+    }
 }
 
 int k10_dbus_run(struct k10_daemon_state *state) {
