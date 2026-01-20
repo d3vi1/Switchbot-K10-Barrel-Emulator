@@ -476,11 +476,53 @@ static int k10_adv_get_local_name(sd_bus *bus, const char *path, const char *int
     (void)property;
     (void)ret_error;
 
-    if (!state->include_local_name) {
-        return sd_bus_message_append(reply, "s", "");
+    (void)state;
+    return sd_bus_message_append(reply, "s", "");
+}
+
+static int k10_adv_get_data(sd_bus *bus, const char *path, const char *interface,
+                            const char *property, sd_bus_message *reply, void *userdata,
+                            sd_bus_error *ret_error) {
+    struct k10_adv_state *state = userdata;
+    int r = 0;
+
+    (void)bus;
+    (void)path;
+    (void)interface;
+    (void)property;
+    (void)ret_error;
+
+    r = sd_bus_message_open_container(reply, 'a', "{yv}");
+    if (r < 0) {
+        return r;
     }
 
-    return sd_bus_message_append(reply, "s", state->config.local_name);
+    if (state->include_local_name && state->config.local_name[0] != '\0') {
+        size_t name_len = strlen(state->config.local_name);
+
+        r = sd_bus_message_open_container(reply, 'e', "yv");
+        if (r < 0) {
+            return r;
+        }
+
+        r = sd_bus_message_append(reply, "y", (uint8_t)0x09);
+        if (r < 0) {
+            return r;
+        }
+
+        r = k10_adv_append_variant_bytes(reply, (const uint8_t *)state->config.local_name,
+                                         name_len);
+        if (r < 0) {
+            return r;
+        }
+
+        r = sd_bus_message_close_container(reply);
+        if (r < 0) {
+            return r;
+        }
+    }
+
+    return sd_bus_message_close_container(reply);
 }
 
 static int k10_adv_get_discoverable(sd_bus *bus, const char *path, const char *interface,
@@ -517,6 +559,7 @@ static const sd_bus_vtable k10_adv_vtable[] = {
                     SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_PROPERTY("ServiceData", "a{sv}", k10_adv_get_service_data, 0,
                     SD_BUS_VTABLE_PROPERTY_CONST),
+    SD_BUS_PROPERTY("Data", "a{yv}", k10_adv_get_data, 0, SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_PROPERTY("Includes", "as", k10_adv_get_includes, 0, SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_PROPERTY("LocalName", "s", k10_adv_get_local_name, 0, SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_PROPERTY("Discoverable", "b", k10_adv_get_discoverable, 0, SD_BUS_VTABLE_PROPERTY_CONST),
