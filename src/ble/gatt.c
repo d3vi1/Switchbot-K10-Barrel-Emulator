@@ -37,7 +37,8 @@ struct k10_gatt_char_ctx {
 static struct k10_gatt_char_ctx k10_rx_ctx;
 static struct k10_gatt_char_ctx k10_tx_ctx;
 
-static void k10_gatt_log_value(const char *label, const uint8_t *value, size_t length);
+static void k10_gatt_log_value(const char *label, const uint8_t *value, size_t length,
+                               const char *uuid);
 
 static int k10_gatt_service_get_uuid(sd_bus *bus, const char *path, const char *interface,
                                      const char *property, sd_bus_message *reply, void *userdata,
@@ -182,7 +183,8 @@ static int k10_gatt_char_get_value(sd_bus *bus, const char *path, const char *in
 
 static int k10_gatt_emit_value(sd_bus *bus, const struct k10_gatt_char_ctx *ctx) {
     if (ctx != NULL && ctx->kind == K10_CHAR_TX && ctx->state != NULL) {
-        k10_gatt_log_value("gatt notify (tx)", ctx->state->tx_value, ctx->state->tx_len);
+        k10_gatt_log_value("gatt notify (tx)", ctx->state->tx_value, ctx->state->tx_len,
+                           ctx->state->tx_uuid);
     }
     return sd_bus_emit_properties_changed(bus, ctx->path, K10_GATT_CHAR_IFACE, "Value", NULL);
 }
@@ -201,9 +203,13 @@ static int k10_gatt_char_read_value(sd_bus_message *m, void *userdata, sd_bus_er
     if (ctx->kind == K10_CHAR_TX) {
         value = ctx->state->tx_value;
         length = ctx->state->tx_len;
+        k10_log_info("gatt read (tx) len=%zu uuid=%s", length, ctx->state->tx_uuid);
+        k10_gatt_log_value("gatt read (tx)", value, length, ctx->state->tx_uuid);
     } else {
         value = ctx->state->rx_value;
         length = ctx->state->rx_len;
+        k10_log_info("gatt read (rx) len=%zu uuid=%s", length, ctx->state->rx_uuid);
+        k10_gatt_log_value("gatt read (rx)", value, length, ctx->state->rx_uuid);
     }
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -222,9 +228,15 @@ static int k10_gatt_char_read_value(sd_bus_message *m, void *userdata, sd_bus_er
     return r;
 }
 
-static void k10_gatt_log_value(const char *label, const uint8_t *value, size_t length) {
+static void k10_gatt_log_value(const char *label, const uint8_t *value, size_t length,
+                               const char *uuid) {
     char buffer[1024];
     size_t offset = 0;
+
+    if (value == NULL || length == 0) {
+        k10_log_info("%s uuid=%s <empty>", label, uuid ? uuid : "?");
+        return;
+    }
 
     for (size_t i = 0; i < length && offset + 3 < sizeof(buffer); i++) {
         offset += (size_t)snprintf(buffer + offset, sizeof(buffer) - offset, "%02X",
@@ -232,7 +244,7 @@ static void k10_gatt_log_value(const char *label, const uint8_t *value, size_t l
     }
 
     buffer[offset] = '\0';
-    k10_log_info("%s len=%zu data=%s", label, length, buffer);
+    k10_log_info("%s uuid=%s len=%zu data=%s", label, uuid ? uuid : "?", length, buffer);
 }
 
 static int k10_gatt_char_write_value(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
@@ -259,7 +271,8 @@ static int k10_gatt_char_write_value(sd_bus_message *m, void *userdata, sd_bus_e
 
     memcpy(ctx->state->rx_value, value, length);
     ctx->state->rx_len = length;
-    k10_gatt_log_value("gatt write (rx)", value, length);
+    k10_log_info("gatt write (rx) len=%zu uuid=%s", length, ctx->state->rx_uuid);
+    k10_gatt_log_value("gatt write (rx)", value, length, ctx->state->rx_uuid);
 
     if (ctx->state->tx_notifying) {
         size_t copy_len = length;
@@ -286,7 +299,7 @@ static int k10_gatt_char_start_notify(sd_bus_message *m, void *userdata, sd_bus_
     }
 
     ctx->state->tx_notifying = true;
-    k10_log_info("gatt notify enabled");
+    k10_log_info("gatt notify enabled uuid=%s", ctx->state->tx_uuid);
     k10_gatt_emit_value(sd_bus_message_get_bus(m), ctx);
     return sd_bus_reply_method_return(m, "");
 }
@@ -303,7 +316,7 @@ static int k10_gatt_char_stop_notify(sd_bus_message *m, void *userdata, sd_bus_e
     }
 
     ctx->state->tx_notifying = false;
-    k10_log_info("gatt notify disabled");
+    k10_log_info("gatt notify disabled uuid=%s", ctx->state->tx_uuid);
     return sd_bus_reply_method_return(m, "");
 }
 
