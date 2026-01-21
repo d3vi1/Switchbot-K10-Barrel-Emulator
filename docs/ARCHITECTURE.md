@@ -159,6 +159,7 @@ Config keys (initial set):
 
 - `adapter` (string, e.g. `"hci0"`)
 - `local_name` (string)
+- `advertising_backend` (`"bluez"` or `"mgmt"`; `mgmt` allows custom ADV/SCAN payload split)
 - `company_id` (integer, hex allowed)
 - `manufacturer_mac_label` (string, hex bytes) or empty for auto
 - `sweeper_mfg_suffix` (string, hex bytes, appended after MAC; SEQ inserted automatically)

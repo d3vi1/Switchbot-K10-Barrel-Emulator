@@ -9,8 +9,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <syslog.h>
 #include <time.h>
+#include <unistd.h>
+
+#include <sys/socket.h>
+
+#include <bluetooth/bluetooth.h>
+#include <bluetooth/hci.h>
 
 #define K10_BLUEZ_SERVICE "org.bluez"
 #define K10_ADV_IFACE "org.bluez.LEAdvertisement1"
@@ -19,12 +26,48 @@
 #define K10_ADV_MAX_LEN 31
 #define K10_ADV_FLAGS_LEN 3
 #define K10_ADV_PRIMARY_UUID "CBA20D00-224D-11E6-9FB8-0002A5D5C51B"
-#define K10_ADV_PRIMARY_UUID "CBA20D00-224D-11E6-9FB8-0002A5D5C51B"
+
+#define K10_MGMT_OP_ADD_EXT_ADV_PARAMS 0x0054
+#define K10_MGMT_OP_ADD_EXT_ADV_DATA 0x0055
+#define K10_MGMT_OP_REMOVE_ADV 0x003f
+#define K10_MGMT_OP_SET_EXT_ADV_ENABLE 0x0059
+
+#define K10_MGMT_EV_CMD_COMPLETE 0x0001
+#define K10_MGMT_ADV_INSTANCE 1
 
 struct k10_hex_bytes {
     uint8_t data[64];
     size_t length;
 };
+
+struct k10_mgmt_hdr {
+    uint16_t opcode;
+    uint16_t index;
+    uint16_t len;
+} __attribute__((packed));
+
+struct k10_mgmt_ev_cmd_complete {
+    uint16_t opcode;
+    uint8_t status;
+    uint8_t data[];
+} __attribute__((packed));
+
+struct k10_mgmt_cp_add_ext_adv_params {
+    uint8_t instance;
+    uint32_t flags;
+    uint16_t duration;
+    uint16_t timeout;
+    uint16_t min_interval;
+    uint16_t max_interval;
+    int8_t tx_power;
+} __attribute__((packed));
+
+struct k10_mgmt_cp_add_ext_adv_data {
+    uint8_t instance;
+    uint8_t adv_len;
+    uint8_t scan_rsp_len;
+    uint8_t data[];
+} __attribute__((packed));
 
 static int k10_hex_value(char ch) {
     if (ch >= '0' && ch <= '9') {
@@ -80,6 +123,358 @@ static int k10_parse_hex_bytes(const char *hex, struct k10_hex_bytes *out) {
     }
 
     out->length = length;
+    return 0;
+}
+
+static bool k10_adv_use_mgmt(const struct k10_config *config) {
+    if (config == NULL) {
+        return false;
+    }
+
+    if (config->advertising_backend[0] == '\0') {
+        return false;
+    }
+
+    return strcasecmp(config->advertising_backend, "mgmt") == 0;
+}
+
+static int k10_adv_build_mfg_payload(struct k10_adv_state *state, uint8_t *payload,
+                                     size_t *payload_len) {
+    struct k10_hex_bytes bytes = {0};
+    uint8_t seq = 1;
+
+    if (payload == NULL || payload_len == NULL) {
+        return -1;
+    }
+
+    *payload_len = 0;
+
+    if (!state->include_manufacturer_data || state->config.manufacturer_mac_label[0] == '\0') {
+        return 0;
+    }
+
+    if (k10_parse_hex_bytes(state->config.manufacturer_mac_label, &bytes) != 0 ||
+        bytes.length == 0) {
+        return -1;
+    }
+
+    if (bytes.length >= 6) {
+        seq = k10_adv_next_seq(state);
+        memcpy(payload, bytes.data, 6);
+        payload[6] = seq;
+        if (bytes.length > 6) {
+            memcpy(payload + 7, bytes.data + 6, bytes.length - 6);
+        }
+        *payload_len = bytes.length + 1;
+    } else {
+        memcpy(payload, bytes.data, bytes.length);
+        *payload_len = bytes.length;
+    }
+
+    if (bytes.length == 8 && *payload_len >= 9) {
+        payload[8] = k10_adv_random_battery();
+    }
+
+    return 0;
+}
+
+static int k10_adv_build_service_data(struct k10_adv_state *state, uint8_t *payload,
+                                      size_t *payload_len) {
+    struct k10_hex_bytes bytes = {0};
+
+    if (payload == NULL || payload_len == NULL) {
+        return -1;
+    }
+
+    *payload_len = 0;
+
+    if (!state->include_service_data || state->config.fd3d_service_data_hex[0] == '\0') {
+        return 0;
+    }
+
+    if (k10_parse_hex_bytes(state->config.fd3d_service_data_hex, &bytes) != 0 ||
+        bytes.length == 0) {
+        return -1;
+    }
+
+    memcpy(payload, bytes.data, bytes.length);
+    *payload_len = bytes.length;
+    return 0;
+}
+
+static int k10_adv_append_ad(uint8_t *buffer, size_t *buffer_len, uint8_t ad_type,
+                             const uint8_t *data, size_t data_len) {
+    size_t needed = 0;
+
+    if (buffer == NULL || buffer_len == NULL) {
+        return -1;
+    }
+
+    needed = 1 + 1 + data_len;
+    if (*buffer_len + needed > K10_ADV_MAX_LEN) {
+        return -1;
+    }
+
+    buffer[*buffer_len] = (uint8_t)(1 + data_len);
+    buffer[*buffer_len + 1] = ad_type;
+    if (data_len > 0 && data != NULL) {
+        memcpy(buffer + *buffer_len + 2, data, data_len);
+    }
+
+    *buffer_len += needed;
+    return 0;
+}
+
+static uint16_t k10_adv_adapter_index(const char *adapter) {
+    if (adapter == NULL || strncmp(adapter, "hci", 3) != 0) {
+        return 0;
+    }
+
+    return (uint16_t)atoi(adapter + 3);
+}
+
+static int k10_mgmt_open(struct k10_adv_state *state) {
+    struct sockaddr_hci addr;
+
+    if (state == NULL) {
+        return -1;
+    }
+
+    if (state->mgmt_fd >= 0) {
+        return 0;
+    }
+
+    state->mgmt_fd = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
+    if (state->mgmt_fd < 0) {
+        return -errno;
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.hci_family = AF_BLUETOOTH;
+    addr.hci_dev = HCI_DEV_NONE;
+    addr.hci_channel = HCI_CHANNEL_CONTROL;
+
+    if (bind(state->mgmt_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        int err = -errno;
+        close(state->mgmt_fd);
+        state->mgmt_fd = -1;
+        return err;
+    }
+
+    return 0;
+}
+
+static int k10_mgmt_send_cmd(int fd, uint16_t opcode, uint16_t index, const void *data,
+                             uint16_t len) {
+    struct k10_mgmt_hdr hdr;
+    ssize_t written = 0;
+
+    hdr.opcode = opcode;
+    hdr.index = index;
+    hdr.len = len;
+
+    written = write(fd, &hdr, sizeof(hdr));
+    if (written != (ssize_t)sizeof(hdr)) {
+        return -errno;
+    }
+
+    if (len > 0 && data != NULL) {
+        written = write(fd, data, len);
+        if (written != (ssize_t)len) {
+            return -errno;
+        }
+    }
+
+    return 0;
+}
+
+static int k10_mgmt_wait_cmd_complete(int fd, uint16_t opcode, uint8_t *status) {
+    uint8_t buffer[512];
+
+    if (status != NULL) {
+        *status = 0xff;
+    }
+
+    for (;;) {
+        ssize_t r = read(fd, buffer, sizeof(buffer));
+        struct k10_mgmt_hdr *hdr = (struct k10_mgmt_hdr *)buffer;
+        struct k10_mgmt_ev_cmd_complete *ev = NULL;
+
+        if (r < (ssize_t)sizeof(*hdr)) {
+            return -errno;
+        }
+
+        if (hdr->opcode != K10_MGMT_EV_CMD_COMPLETE) {
+            continue;
+        }
+
+        if (r < (ssize_t)(sizeof(*hdr) + sizeof(*ev))) {
+            return -EINVAL;
+        }
+
+        ev = (struct k10_mgmt_ev_cmd_complete *)(buffer + sizeof(*hdr));
+        if (ev->opcode != opcode) {
+            continue;
+        }
+
+        if (status != NULL) {
+            *status = ev->status;
+        }
+        return ev->status == 0x00 ? 0 : -EIO;
+    }
+}
+
+static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_config *config) {
+    uint8_t adv_buffer[K10_ADV_MAX_LEN];
+    uint8_t scan_buffer[K10_ADV_MAX_LEN];
+    uint8_t mfg_payload[64];
+    uint8_t svc_payload[64];
+    size_t adv_len = 0;
+    size_t scan_len = 0;
+    size_t mfg_len = 0;
+    size_t svc_len = 0;
+    struct k10_mgmt_cp_add_ext_adv_params params;
+    uint8_t cmd_buffer[512];
+    struct k10_mgmt_cp_add_ext_adv_data *adv_data = NULL;
+    uint8_t status = 0;
+    uint16_t index = 0;
+    int r = 0;
+
+    if (state == NULL || config == NULL) {
+        return -EINVAL;
+    }
+
+    r = k10_mgmt_open(state);
+    if (r < 0) {
+        k10_log_error("mgmt open failed: %s", strerror(-r));
+        return r;
+    }
+
+    index = k10_adv_adapter_index(config->adapter);
+    state->mgmt_instance = K10_MGMT_ADV_INSTANCE;
+
+    if (k10_adv_build_mfg_payload(state, mfg_payload, &mfg_len) == 0 && mfg_len > 0) {
+        uint8_t mfg_field[2 + sizeof(mfg_payload)];
+        size_t field_len = 0;
+
+        mfg_field[0] = (uint8_t)(config->company_id & 0xff);
+        mfg_field[1] = (uint8_t)((config->company_id >> 8) & 0xff);
+        memcpy(mfg_field + 2, mfg_payload, mfg_len);
+        field_len = mfg_len + 2;
+        if (k10_adv_append_ad(adv_buffer, &adv_len, 0xff, mfg_field, field_len) != 0) {
+            k10_log_error("mgmt adv data too large (manufacturer)");
+            return -EINVAL;
+        }
+    }
+
+    if (state->include_local_name && config->local_name[0] != '\0') {
+        size_t name_len = strlen(config->local_name);
+        if (k10_adv_append_ad(adv_buffer, &adv_len, 0x09,
+                              (const uint8_t *)config->local_name, name_len) != 0) {
+            k10_log_error("mgmt adv data too large (name)");
+            return -EINVAL;
+        }
+    }
+
+    {
+        uint8_t flags = 0x06;
+        if (k10_adv_append_ad(adv_buffer, &adv_len, 0x01, &flags, 1) != 0) {
+            k10_log_error("mgmt adv data too large (flags)");
+            return -EINVAL;
+        }
+    }
+
+    if (k10_adv_build_service_data(state, svc_payload, &svc_len) == 0 && svc_len > 0) {
+        uint8_t svc_field[2 + sizeof(svc_payload)];
+        size_t field_len = 0;
+
+        svc_field[0] = 0x3d;
+        svc_field[1] = 0xfd;
+        memcpy(svc_field + 2, svc_payload, svc_len);
+        field_len = svc_len + 2;
+        if (k10_adv_append_ad(scan_buffer, &scan_len, 0x16, svc_field, field_len) != 0) {
+            k10_log_error("mgmt scan response too large (service data)");
+            return -EINVAL;
+        }
+    }
+
+    memset(&params, 0, sizeof(params));
+    params.instance = state->mgmt_instance;
+    params.flags = 0x00010001;
+    params.duration = 0;
+    params.timeout = 0;
+    params.min_interval = 0;
+    params.max_interval = 0;
+    params.tx_power = 0;
+
+    r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_ADD_EXT_ADV_PARAMS, index, &params,
+                          sizeof(params));
+    if (r < 0) {
+        k10_log_error("mgmt add adv params failed: %s", strerror(-r));
+        return r;
+    }
+
+    r = k10_mgmt_wait_cmd_complete(state->mgmt_fd, K10_MGMT_OP_ADD_EXT_ADV_PARAMS, &status);
+    if (r < 0) {
+        k10_log_error("mgmt add adv params rejected: 0x%02x", status);
+        return r;
+    }
+
+    adv_data = (struct k10_mgmt_cp_add_ext_adv_data *)cmd_buffer;
+    adv_data->instance = state->mgmt_instance;
+    adv_data->adv_len = (uint8_t)adv_len;
+    adv_data->scan_rsp_len = (uint8_t)scan_len;
+    memcpy(adv_data->data, adv_buffer, adv_len);
+    memcpy(adv_data->data + adv_len, scan_buffer, scan_len);
+
+    r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_ADD_EXT_ADV_DATA, index, adv_data,
+                          (uint16_t)(sizeof(*adv_data) + adv_len + scan_len));
+    if (r < 0) {
+        k10_log_error("mgmt add adv data failed: %s", strerror(-r));
+        return r;
+    }
+
+    r = k10_mgmt_wait_cmd_complete(state->mgmt_fd, K10_MGMT_OP_ADD_EXT_ADV_DATA, &status);
+    if (r < 0) {
+        k10_log_error("mgmt add adv data rejected: 0x%02x", status);
+        return r;
+    }
+
+    state->mgmt_active = true;
+    return 0;
+}
+
+static int k10_adv_mgmt_stop(struct k10_adv_state *state, const struct k10_config *config) {
+    uint8_t instance = K10_MGMT_ADV_INSTANCE;
+    uint8_t status = 0;
+    uint16_t index = 0;
+    int r = 0;
+
+    if (state == NULL || config == NULL || !state->mgmt_active) {
+        return 0;
+    }
+
+    index = k10_adv_adapter_index(config->adapter);
+
+    r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_REMOVE_ADV, index, &instance,
+                          sizeof(instance));
+    if (r < 0) {
+        k10_log_error("mgmt remove adv failed: %s", strerror(-r));
+        return r;
+    }
+
+    r = k10_mgmt_wait_cmd_complete(state->mgmt_fd, K10_MGMT_OP_REMOVE_ADV, &status);
+    if (r < 0) {
+        k10_log_error("mgmt remove adv rejected: 0x%02x", status);
+        return r;
+    }
+
+    state->mgmt_active = false;
+
+    if (state->mgmt_fd >= 0) {
+        close(state->mgmt_fd);
+        state->mgmt_fd = -1;
+    }
     return 0;
 }
 
@@ -526,6 +921,10 @@ static void k10_adv_set_defaults(struct k10_adv_state *state) {
     if (state->object_path[0] == '\0') {
         strncpy(state->object_path, K10_ADV_OBJECT, sizeof(state->object_path) - 1);
     }
+
+    if (state->mgmt_fd == 0) {
+        state->mgmt_fd = -1;
+    }
 }
 
 static int k10_adv_register_complete(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
@@ -616,14 +1015,28 @@ int k10_adv_start(sd_bus *bus, struct k10_adv_state *state, const struct k10_con
         return -EINVAL;
     }
 
-    if (state->registered || state->pending) {
-        return 0;
-    }
-
     k10_adv_set_defaults(state);
     state->config = *config;
     state->mfg_seq = 1;
     k10_adv_select_fields(state);
+
+    if (k10_adv_use_mgmt(config)) {
+        if (state->mgmt_active) {
+            return 0;
+        }
+
+        r = k10_adv_mgmt_start(state, config);
+        if (r == 0) {
+            state->registered = true;
+            state->pending = false;
+            k10_log_info("advertising registered via mgmt on %s", config->adapter);
+        }
+        return r;
+    }
+
+    if (state->registered || state->pending) {
+        return 0;
+    }
 
     if (state->slot == NULL) {
         r = sd_bus_add_object_vtable(bus, &state->slot, state->object_path, K10_ADV_IFACE,
@@ -652,6 +1065,16 @@ int k10_adv_stop(sd_bus *bus, struct k10_adv_state *state) {
 
     if (bus == NULL || state == NULL) {
         return -EINVAL;
+    }
+
+    if (state->mgmt_active) {
+        r = k10_adv_mgmt_stop(state, &state->config);
+        if (r == 0) {
+            state->registered = false;
+            state->pending = false;
+            k10_log_info("advertising unregistered (mgmt)");
+        }
+        return r;
     }
 
     if (!state->registered && !state->pending) {

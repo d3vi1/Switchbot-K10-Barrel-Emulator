@@ -8,6 +8,7 @@
 struct k10_config {
     char adapter[16];
     char local_name[64];
+    char advertising_backend[16];
     unsigned int company_id;
     char manufacturer_mac_label[32];
     char sweeper_mfg_suffix[32];

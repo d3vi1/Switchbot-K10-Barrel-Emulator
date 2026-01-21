@@ -298,6 +298,11 @@ static int k10_dbus_append_config(sd_bus_message *msg, const struct k10_config *
         return r;
     }
 
+    r = k10_dbus_append_kv_string(msg, "advertising_backend", config->advertising_backend);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_uint(msg, "company_id", config->company_id);
     if (r < 0) {
         return r;
@@ -673,6 +678,10 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
         } else if (strcmp(key, "local_name") == 0) {
             r = k10_dbus_apply_string(m, updated_config.local_name,
                                       sizeof(updated_config.local_name));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "advertising_backend") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.advertising_backend,
+                                      sizeof(updated_config.advertising_backend));
             entry_updated = (r >= 0);
         } else if (strcmp(key, "company_id") == 0) {
             r = k10_dbus_apply_uint(m, &updated_config.company_id);

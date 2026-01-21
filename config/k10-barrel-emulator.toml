@@ -1,5 +1,6 @@
 adapter = "hci0"
 local_name = "WoS1MB"
+advertising_backend = "bluez"
 company_id = 0x0969
 manufacturer_mac_label = ""
 sweeper_mfg_suffix = "2064"

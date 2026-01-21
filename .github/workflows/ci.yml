@@ -25,7 +25,7 @@ jobs:
     container: fedora:40
     steps:
       - name: Install dependencies
-        run: dnf -y install cmake gcc make rpm-build rpmdevtools systemd-devel systemd-rpm-macros
+        run: dnf -y install cmake gcc make rpm-build rpmdevtools systemd-devel systemd-rpm-macros bluez-libs-devel
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/workspace" \
             -w /workspace \
             fedora:40 \
-            bash -c "dnf -y install cmake gcc make rpm-build rpmdevtools systemd-devel systemd-rpm-macros && scripts/build_rpm.sh"
+            bash -c "dnf -y install cmake gcc make rpm-build rpmdevtools systemd-devel systemd-rpm-macros bluez-libs-devel && scripts/build_rpm.sh"
 
       - name: Upload RPMs (aarch64)
         uses: actions/upload-artifact@v4

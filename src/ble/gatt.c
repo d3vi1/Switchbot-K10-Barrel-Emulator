@@ -416,7 +416,7 @@ static void k10_gatt_set_defaults(struct k10_gatt_state *state) {
 
 int k10_gatt_start(sd_bus *bus, struct k10_gatt_state *state, const struct k10_config *config) {
     static const char *rx_flags[] = {"write", "write-without-response"};
-    static const char *tx_flags[] = {"read", "notify"};
+    static const char *tx_flags[] = {"notify"};
     int r = 0;
 
     if (bus == NULL || state == NULL || config == NULL) {
@@ -462,8 +462,7 @@ int k10_gatt_start(sd_bus *bus, struct k10_gatt_state *state, const struct k10_c
     k10_tx_ctx.uuid = K10_GATT_CHAR_TX_UUID;
     k10_tx_ctx.service_path = K10_GATT_SERVICE_PATH;
     k10_tx_ctx.flags[0] = tx_flags[0];
-    k10_tx_ctx.flags[1] = tx_flags[1];
-    k10_tx_ctx.flag_count = 2;
+    k10_tx_ctx.flag_count = 1;
 
     if (state->rx_slot == NULL) {
         r = sd_bus_add_object_vtable(bus, &state->rx_slot, K10_GATT_CHAR_RX_PATH,
