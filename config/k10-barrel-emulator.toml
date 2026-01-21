@@ -13,5 +13,6 @@ fd3d_service_data_hex = "00"
 sweeper_fd3d_service_data_hex = "7d00"
 barrel_fd3d_service_data_hex = ""
 include_tx_power = true
+use_random_address = true
 fw_major = 1
 fw_minor = 0

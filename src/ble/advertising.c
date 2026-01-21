@@ -592,11 +592,12 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
         return -EINVAL;
     }
 
-    if (config->manufacturer_mac_label[0] != '\0' &&
+    if (config->use_random_address && config->manufacturer_mac_label[0] != '\0' &&
         k10_parse_hex_bytes(config->manufacturer_mac_label, &bytes) == 0 && bytes.length >= 6) {
         for (size_t i = 0; i < 6; i++) {
             random_addr.b[i] = bytes.data[5 - i];
         }
+        random_addr.b[5] = (uint8_t)((random_addr.b[5] & 0x3f) | 0xc0);
         if (k10_hci_le_set_random_address(state->hci_fd, &random_addr, 1000) == 0) {
             own_addr_type = 0x01;
         } else {
