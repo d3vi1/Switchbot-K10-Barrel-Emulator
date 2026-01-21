@@ -599,27 +599,33 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
         }
         if (k10_hci_le_set_random_address(state->hci_fd, &random_addr, 1000) == 0) {
             own_addr_type = 0x01;
+        } else {
+            k10_log_error("hci set random address failed: %s", strerror(errno));
         }
     }
 
     r = k10_hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, own_addr_type,
                                               0x00, &direct_addr, 0x07, 0x00, 1000);
     if (r < 0) {
+        k10_log_error("hci set advertising parameters failed: %s", strerror(errno));
         return -errno;
     }
 
     r = k10_hci_le_set_advertising_data(state->hci_fd, (uint8_t)adv_len, adv_buffer, 1000);
     if (r < 0) {
+        k10_log_error("hci set advertising data failed: %s", strerror(errno));
         return -errno;
     }
 
     r = k10_hci_le_set_scan_response_data(state->hci_fd, (uint8_t)scan_len, scan_buffer, 1000);
     if (r < 0) {
+        k10_log_error("hci set scan response data failed: %s", strerror(errno));
         return -errno;
     }
 
     r = k10_hci_le_set_advertise_enable(state->hci_fd, 0x01, 1000);
     if (r < 0) {
+        k10_log_error("hci advertise enable failed: %s", strerror(errno));
         return -errno;
     }
 
