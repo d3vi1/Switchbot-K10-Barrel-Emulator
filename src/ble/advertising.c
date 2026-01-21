@@ -18,6 +18,7 @@
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
+#include <bluetooth/hci_lib.h>
 
 #define K10_BLUEZ_SERVICE "org.bluez"
 #define K10_ADV_IFACE "org.bluez.LEAdvertisement1"
@@ -153,6 +154,18 @@ static bool k10_adv_use_mgmt(const struct k10_config *config) {
     return strcasecmp(config->advertising_backend, "mgmt") == 0;
 }
 
+static bool k10_adv_use_hci(const struct k10_config *config) {
+    if (config == NULL) {
+        return false;
+    }
+
+    if (config->advertising_backend[0] == '\0') {
+        return false;
+    }
+
+    return strcasecmp(config->advertising_backend, "hci") == 0;
+}
+
 static int k10_adv_build_mfg_payload(struct k10_adv_state *state, uint8_t *payload,
                                      size_t *payload_len) {
     struct k10_hex_bytes bytes = {0};
@@ -214,6 +227,75 @@ static int k10_adv_build_service_data(struct k10_adv_state *state, uint8_t *payl
 
     memcpy(payload, bytes.data, bytes.length);
     *payload_len = bytes.length;
+    return 0;
+}
+
+static int k10_adv_build_buffers(struct k10_adv_state *state, const struct k10_config *config,
+                                 uint8_t *adv_buffer, size_t *adv_len, uint8_t *scan_buffer,
+                                 size_t *scan_len) {
+    uint8_t mfg_payload[64];
+    uint8_t svc_payload[64];
+    size_t mfg_len = 0;
+    size_t svc_len = 0;
+
+    if (state == NULL || config == NULL || adv_buffer == NULL || adv_len == NULL ||
+        scan_buffer == NULL || scan_len == NULL) {
+        return -EINVAL;
+    }
+
+    *adv_len = 0;
+    *scan_len = 0;
+
+    if (state->include_manufacturer_data &&
+        k10_adv_build_mfg_payload(state, mfg_payload, &mfg_len) == 0 && mfg_len > 0) {
+        uint8_t mfg_field[2 + sizeof(mfg_payload)];
+        size_t field_len = 0;
+
+        mfg_field[0] = (uint8_t)(config->company_id & 0xff);
+        mfg_field[1] = (uint8_t)((config->company_id >> 8) & 0xff);
+        memcpy(mfg_field + 2, mfg_payload, mfg_len);
+        field_len = mfg_len + 2;
+        if (k10_adv_append_ad(adv_buffer, adv_len, 0xff, mfg_field, field_len) != 0) {
+            return -EINVAL;
+        }
+    }
+
+    if (state->include_local_name && config->local_name[0] != '\0') {
+        size_t name_len = strlen(config->local_name);
+        if (k10_adv_append_ad(adv_buffer, adv_len, 0x09, (const uint8_t *)config->local_name,
+                              name_len) != 0) {
+            return -EINVAL;
+        }
+    }
+
+    if (state->include_tx_power) {
+        uint8_t tx = 0x00;
+        if (k10_adv_append_ad(adv_buffer, adv_len, 0x0a, &tx, 1) != 0) {
+            return -EINVAL;
+        }
+    }
+
+    {
+        uint8_t flags = 0x06;
+        if (k10_adv_append_ad(adv_buffer, adv_len, 0x01, &flags, 1) != 0) {
+            return -EINVAL;
+        }
+    }
+
+    if (state->include_service_data &&
+        k10_adv_build_service_data(state, svc_payload, &svc_len) == 0 && svc_len > 0) {
+        uint8_t svc_field[2 + sizeof(svc_payload)];
+        size_t field_len = 0;
+
+        svc_field[0] = 0x3d;
+        svc_field[1] = 0xfd;
+        memcpy(svc_field + 2, svc_payload, svc_len);
+        field_len = svc_len + 2;
+        if (k10_adv_append_ad(scan_buffer, scan_len, 0x16, svc_field, field_len) != 0) {
+            return -EINVAL;
+        }
+    }
+
     return 0;
 }
 
@@ -342,12 +424,8 @@ static int k10_mgmt_wait_cmd_complete(int fd, uint16_t opcode, uint8_t *status) 
 static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_config *config) {
     uint8_t adv_buffer[K10_ADV_MAX_LEN];
     uint8_t scan_buffer[K10_ADV_MAX_LEN];
-    uint8_t mfg_payload[64];
-    uint8_t svc_payload[64];
     size_t adv_len = 0;
     size_t scan_len = 0;
-    size_t mfg_len = 0;
-    size_t svc_len = 0;
     struct k10_mgmt_cp_add_ext_adv_params params;
     uint8_t cmd_buffer[512];
     struct k10_mgmt_cp_add_ext_adv_data *adv_data = NULL;
@@ -368,49 +446,9 @@ static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_conf
     index = k10_adv_adapter_index(config->adapter);
     state->mgmt_instance = K10_MGMT_ADV_INSTANCE;
 
-    if (k10_adv_build_mfg_payload(state, mfg_payload, &mfg_len) == 0 && mfg_len > 0) {
-        uint8_t mfg_field[2 + sizeof(mfg_payload)];
-        size_t field_len = 0;
-
-        mfg_field[0] = (uint8_t)(config->company_id & 0xff);
-        mfg_field[1] = (uint8_t)((config->company_id >> 8) & 0xff);
-        memcpy(mfg_field + 2, mfg_payload, mfg_len);
-        field_len = mfg_len + 2;
-        if (k10_adv_append_ad(adv_buffer, &adv_len, 0xff, mfg_field, field_len) != 0) {
-            k10_log_error("mgmt adv data too large (manufacturer)");
-            return -EINVAL;
-        }
-    }
-
-    if (state->include_local_name && config->local_name[0] != '\0') {
-        size_t name_len = strlen(config->local_name);
-        if (k10_adv_append_ad(adv_buffer, &adv_len, 0x09, (const uint8_t *)config->local_name,
-                              name_len) != 0) {
-            k10_log_error("mgmt adv data too large (name)");
-            return -EINVAL;
-        }
-    }
-
-    {
-        uint8_t flags = 0x06;
-        if (k10_adv_append_ad(adv_buffer, &adv_len, 0x01, &flags, 1) != 0) {
-            k10_log_error("mgmt adv data too large (flags)");
-            return -EINVAL;
-        }
-    }
-
-    if (k10_adv_build_service_data(state, svc_payload, &svc_len) == 0 && svc_len > 0) {
-        uint8_t svc_field[2 + sizeof(svc_payload)];
-        size_t field_len = 0;
-
-        svc_field[0] = 0x3d;
-        svc_field[1] = 0xfd;
-        memcpy(svc_field + 2, svc_payload, svc_len);
-        field_len = svc_len + 2;
-        if (k10_adv_append_ad(scan_buffer, &scan_len, 0x16, svc_field, field_len) != 0) {
-            k10_log_error("mgmt scan response too large (service data)");
-            return -EINVAL;
-        }
+    if (k10_adv_build_buffers(state, config, adv_buffer, &adv_len, scan_buffer, &scan_len) != 0) {
+        k10_log_error("mgmt adv data too large");
+        return -EINVAL;
     }
 
     memset(&params, 0, sizeof(params));
@@ -484,6 +522,103 @@ static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_conf
 
     state->mgmt_active = true;
     return 0;
+}
+
+static int k10_hci_open(struct k10_adv_state *state, const struct k10_config *config) {
+    int dev_id = 0;
+    int fd = 0;
+
+    if (state == NULL || config == NULL) {
+        return -EINVAL;
+    }
+
+    if (state->hci_fd >= 0) {
+        return 0;
+    }
+
+    dev_id = hci_devid(config->adapter);
+    if (dev_id < 0) {
+        dev_id = hci_get_route(NULL);
+    }
+    if (dev_id < 0) {
+        return -errno;
+    }
+
+    fd = hci_open_dev(dev_id);
+    if (fd < 0) {
+        return -errno;
+    }
+
+    state->hci_fd = fd;
+    return 0;
+}
+
+static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_config *config) {
+    uint8_t adv_buffer[K10_ADV_MAX_LEN];
+    uint8_t scan_buffer[K10_ADV_MAX_LEN];
+    size_t adv_len = 0;
+    size_t scan_len = 0;
+    uint8_t direct_addr[6] = {0};
+    int r = 0;
+
+    if (state == NULL || config == NULL) {
+        return -EINVAL;
+    }
+
+    r = k10_hci_open(state, config);
+    if (r < 0) {
+        k10_log_error("hci open failed: %s", strerror(-r));
+        return r;
+    }
+
+    if (k10_adv_build_buffers(state, config, adv_buffer, &adv_len, scan_buffer, &scan_len) != 0) {
+        k10_log_error("hci adv data too large");
+        return -EINVAL;
+    }
+
+    r = hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, 0x00, 0x00,
+                                          direct_addr, 0x07, 0x00, 1000);
+    if (r < 0) {
+        return -errno;
+    }
+
+    r = hci_le_set_advertising_data(state->hci_fd, (uint8_t)adv_len, adv_buffer, 1000);
+    if (r < 0) {
+        return -errno;
+    }
+
+    r = hci_le_set_scan_response_data(state->hci_fd, (uint8_t)scan_len, scan_buffer, 1000);
+    if (r < 0) {
+        return -errno;
+    }
+
+    r = hci_le_set_advertise_enable(state->hci_fd, 0x01, 1000);
+    if (r < 0) {
+        return -errno;
+    }
+
+    state->hci_active = true;
+    return 0;
+}
+
+static int k10_adv_hci_stop(struct k10_adv_state *state) {
+    int r = 0;
+
+    if (state == NULL || !state->hci_active) {
+        return 0;
+    }
+
+    r = hci_le_set_advertise_enable(state->hci_fd, 0x00, 1000);
+    if (r < 0) {
+        r = -errno;
+    }
+
+    if (state->hci_fd >= 0) {
+        close(state->hci_fd);
+        state->hci_fd = -1;
+    }
+    state->hci_active = false;
+    return r;
 }
 
 static int k10_adv_mgmt_stop(struct k10_adv_state *state, const struct k10_config *config) {
@@ -994,6 +1129,10 @@ static void k10_adv_set_defaults(struct k10_adv_state *state) {
     if (state->mgmt_fd == 0) {
         state->mgmt_fd = -1;
     }
+
+    if (state->hci_fd == 0) {
+        state->hci_fd = -1;
+    }
 }
 
 static int k10_adv_register_complete(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
@@ -1099,6 +1238,29 @@ int k10_adv_start(sd_bus *bus, struct k10_adv_state *state, const struct k10_con
             state->registered = true;
             state->pending = false;
             k10_log_info("advertising registered via mgmt on %s", config->adapter);
+        } else if (r == -EINVAL || r == -EOPNOTSUPP || r == -ENOTSUP || r == -ENOSYS) {
+            k10_log_info("mgmt advertising failed (%s), falling back to HCI",
+                         strerror(r < 0 ? -r : r));
+            r = k10_adv_hci_start(state, config);
+            if (r == 0) {
+                state->registered = true;
+                state->pending = false;
+                k10_log_info("advertising registered via hci on %s", config->adapter);
+            }
+        }
+        return r;
+    }
+
+    if (k10_adv_use_hci(config)) {
+        if (state->hci_active) {
+            return 0;
+        }
+
+        r = k10_adv_hci_start(state, config);
+        if (r == 0) {
+            state->registered = true;
+            state->pending = false;
+            k10_log_info("advertising registered via hci on %s", config->adapter);
         }
         return r;
     }
@@ -1142,6 +1304,16 @@ int k10_adv_stop(sd_bus *bus, struct k10_adv_state *state) {
             state->registered = false;
             state->pending = false;
             k10_log_info("advertising unregistered (mgmt)");
+        }
+        return r;
+    }
+
+    if (state->hci_active) {
+        r = k10_adv_hci_stop(state);
+        if (r == 0) {
+            state->registered = false;
+            state->pending = false;
+            k10_log_info("advertising unregistered (hci)");
         }
         return r;
     }

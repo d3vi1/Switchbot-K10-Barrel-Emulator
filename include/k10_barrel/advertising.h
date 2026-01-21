@@ -20,6 +20,8 @@ struct k10_adv_state {
     int mgmt_fd;
     uint8_t mgmt_instance;
     bool mgmt_active;
+    int hci_fd;
+    bool hci_active;
     const char *service_uuid_view[K10_MAX_UUIDS];
     unsigned int service_uuid_view_count;
     char object_path[128];
