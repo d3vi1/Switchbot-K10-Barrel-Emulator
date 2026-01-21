@@ -656,7 +656,7 @@ static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
                                                  const bdaddr_t *direct_bdaddr, uint8_t chan_map,
                                                  uint8_t filter, int to) {
     le_set_advertising_parameters_cp cp;
-    le_set_advertising_parameters_rp rp;
+    uint8_t status = 0;
 
     memset(&cp, 0, sizeof(cp));
     cp.min_interval = htobs(min_interval);
@@ -671,12 +671,11 @@ static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
     cp.filter = filter;
 
     if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_PARAMETERS, &cp,
-                         LE_SET_ADVERTISING_PARAMETERS_CP_SIZE, &rp,
-                         LE_SET_ADVERTISING_PARAMETERS_RP_SIZE, to) < 0) {
+                         LE_SET_ADVERTISING_PARAMETERS_CP_SIZE, &status, sizeof(status), to) < 0) {
         return -1;
     }
 
-    if (rp.status) {
+    if (status) {
         errno = EIO;
         return -1;
     }
@@ -686,7 +685,7 @@ static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
 
 static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t *data, int to) {
     le_set_advertising_data_cp cp;
-    le_set_advertising_data_rp rp;
+    uint8_t status = 0;
 
     memset(&cp, 0, sizeof(cp));
     if (length > sizeof(cp.data)) {
@@ -697,12 +696,12 @@ static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t
         memcpy(cp.data, data, length);
     }
 
-    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_DATA, &cp, LE_SET_ADVERTISING_DATA_CP_SIZE, &rp,
-                         LE_SET_ADVERTISING_DATA_RP_SIZE, to) < 0) {
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_DATA, &cp, LE_SET_ADVERTISING_DATA_CP_SIZE,
+                         &status, sizeof(status), to) < 0) {
         return -1;
     }
 
-    if (rp.status) {
+    if (status) {
         errno = EIO;
         return -1;
     }
@@ -712,7 +711,7 @@ static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t
 
 static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data, int to) {
     le_set_scan_response_data_cp cp;
-    le_set_scan_response_data_rp rp;
+    uint8_t status = 0;
 
     memset(&cp, 0, sizeof(cp));
     if (length > sizeof(cp.data)) {
@@ -724,11 +723,11 @@ static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8
     }
 
     if (k10_hci_send_req(dd, OCF_LE_SET_SCAN_RESPONSE_DATA, &cp, LE_SET_SCAN_RESPONSE_DATA_CP_SIZE,
-                         &rp, LE_SET_SCAN_RESPONSE_DATA_RP_SIZE, to) < 0) {
+                         &status, sizeof(status), to) < 0) {
         return -1;
     }
 
-    if (rp.status) {
+    if (status) {
         errno = EIO;
         return -1;
     }
@@ -738,16 +737,16 @@ static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8
 
 static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to) {
     le_set_advertise_enable_cp cp;
-    le_set_advertise_enable_rp rp;
+    uint8_t status = 0;
 
     cp.enable = enable;
 
-    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISE_ENABLE, &cp, LE_SET_ADVERTISE_ENABLE_CP_SIZE, &rp,
-                         LE_SET_ADVERTISE_ENABLE_RP_SIZE, to) < 0) {
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISE_ENABLE, &cp, LE_SET_ADVERTISE_ENABLE_CP_SIZE,
+                         &status, sizeof(status), to) < 0) {
         return -1;
     }
 
-    if (rp.status) {
+    if (status) {
         errno = EIO;
         return -1;
     }
