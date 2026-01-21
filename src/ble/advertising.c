@@ -418,8 +418,8 @@ static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_conf
     params.flags = 0x00010001;
     params.duration = 0;
     params.timeout = 0;
-    params.min_interval = 0;
-    params.max_interval = 0;
+    params.min_interval = 0x00a0;
+    params.max_interval = 0x00f0;
     params.tx_power = 0;
 
     r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_ADD_EXT_ADV_PARAMS, index, &params,
