@@ -69,6 +69,10 @@ static void k10_apply_mode_mfg(struct k10_config *config, sd_bus *bus,
         return;
     }
 
+    if (config->manufacturer_mac_label[0] != '\0') {
+        return;
+    }
+
     if (k10_get_adapter_address(bus, config->adapter, address, sizeof(address)) != 0) {
         return;
     }

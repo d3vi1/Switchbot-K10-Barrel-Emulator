@@ -55,6 +55,7 @@ static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
 static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t *data, int to);
 static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data, int to);
 static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to);
+static int k10_hci_le_set_random_address(int dd, const bdaddr_t *addr, int to);
 
 struct k10_mgmt_hdr {
     uint16_t opcode;
@@ -570,7 +571,10 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
     uint8_t scan_buffer[K10_ADV_MAX_LEN];
     size_t adv_len = 0;
     size_t scan_len = 0;
+    struct k10_hex_bytes bytes = {0};
     bdaddr_t direct_addr = {{0}};
+    bdaddr_t random_addr = {{0}};
+    uint8_t own_addr_type = 0x00;
     int r = 0;
 
     if (state == NULL || config == NULL) {
@@ -588,8 +592,18 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
         return -EINVAL;
     }
 
-    r = k10_hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, 0x00, 0x00,
-                                              &direct_addr, 0x07, 0x00, 1000);
+    if (config->manufacturer_mac_label[0] != '\0' &&
+        k10_parse_hex_bytes(config->manufacturer_mac_label, &bytes) == 0 && bytes.length >= 6) {
+        for (size_t i = 0; i < 6; i++) {
+            random_addr.b[i] = bytes.data[5 - i];
+        }
+        if (k10_hci_le_set_random_address(state->hci_fd, &random_addr, 1000) == 0) {
+            own_addr_type = 0x01;
+        }
+    }
+
+    r = k10_hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, own_addr_type,
+                                              0x00, &direct_addr, 0x07, 0x00, 1000);
     if (r < 0) {
         return -errno;
     }
@@ -743,6 +757,30 @@ static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to) {
 
     if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISE_ENABLE, &cp, LE_SET_ADVERTISE_ENABLE_CP_SIZE,
                          &status, sizeof(status), to) < 0) {
+        return -1;
+    }
+
+    if (status) {
+        errno = EIO;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int k10_hci_le_set_random_address(int dd, const bdaddr_t *addr, int to) {
+    le_set_random_address_cp cp;
+    uint8_t status = 0;
+
+    if (addr == NULL) {
+        return -1;
+    }
+
+    memset(&cp, 0, sizeof(cp));
+    bacpy(&cp.bdaddr, addr);
+
+    if (k10_hci_send_req(dd, OCF_LE_SET_RANDOM_ADDRESS, &cp, LE_SET_RANDOM_ADDRESS_CP_SIZE, &status,
+                         sizeof(status), to) < 0) {
         return -1;
     }
 
