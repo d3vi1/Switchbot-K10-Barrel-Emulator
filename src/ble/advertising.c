@@ -41,8 +41,19 @@ struct k10_hex_bytes {
     size_t length;
 };
 
+static int k10_adv_append_ad(uint8_t *buffer, size_t *buffer_len, uint8_t ad_type,
+                             const uint8_t *data, size_t data_len);
 static uint8_t k10_adv_random_battery(void);
 static uint8_t k10_adv_next_seq(struct k10_adv_state *state);
+
+extern int hci_le_set_advertising_parameters(int dd, uint16_t min_interval, uint16_t max_interval,
+                                             uint8_t advtype, uint8_t own_bdaddr_type,
+                                             uint8_t direct_bdaddr_type,
+                                             const bdaddr_t *direct_bdaddr, uint8_t chan_map,
+                                             uint8_t filter, int to);
+extern int hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t *data, int to);
+extern int hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data, int to);
+extern int hci_le_set_advertise_enable(int dd, uint8_t enable, int to);
 
 struct k10_mgmt_hdr {
     uint16_t opcode;
@@ -558,7 +569,7 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
     uint8_t scan_buffer[K10_ADV_MAX_LEN];
     size_t adv_len = 0;
     size_t scan_len = 0;
-    uint8_t direct_addr[6] = {0};
+    bdaddr_t direct_addr = {{0}};
     int r = 0;
 
     if (state == NULL || config == NULL) {
@@ -577,7 +588,7 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
     }
 
     r = hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, 0x00, 0x00,
-                                          direct_addr, 0x07, 0x00, 1000);
+                                          &direct_addr, 0x07, 0x00, 1000);
     if (r < 0) {
         return -errno;
     }
