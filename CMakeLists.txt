@@ -21,9 +21,12 @@ target_compile_options(k10-barrel-emulatord PRIVATE -Wall -Wextra -Wpedantic)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+pkg_check_modules(BLUEZ REQUIRED bluez)
 target_compile_definitions(k10-barrel-emulatord PRIVATE K10_USE_SYSTEMD)
 target_include_directories(k10-barrel-emulatord PRIVATE ${SYSTEMD_INCLUDE_DIRS})
-target_link_libraries(k10-barrel-emulatord PRIVATE ${SYSTEMD_LIBRARIES})
+target_link_libraries(k10-barrel-emulatord PRIVATE ${SYSTEMD_LIBRARIES} ${BLUEZ_LIBRARIES})
+target_include_directories(k10-barrel-emulatord PRIVATE ${BLUEZ_INCLUDE_DIRS})
+target_compile_definitions(k10-barrel-emulatord PRIVATE ${BLUEZ_CFLAGS_OTHER})
 
 add_executable(k10-barrel-emulatorctl
     src/cli/main.c
