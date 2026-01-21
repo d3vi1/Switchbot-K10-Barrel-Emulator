@@ -46,14 +46,15 @@ static int k10_adv_append_ad(uint8_t *buffer, size_t *buffer_len, uint8_t ad_typ
 static uint8_t k10_adv_random_battery(void);
 static uint8_t k10_adv_next_seq(struct k10_adv_state *state);
 
-extern int hci_le_set_advertising_parameters(int dd, uint16_t min_interval, uint16_t max_interval,
-                                             uint8_t advtype, uint8_t own_bdaddr_type,
-                                             uint8_t direct_bdaddr_type,
-                                             const bdaddr_t *direct_bdaddr, uint8_t chan_map,
-                                             uint8_t filter, int to);
-extern int hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t *data, int to);
-extern int hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data, int to);
-extern int hci_le_set_advertise_enable(int dd, uint8_t enable, int to);
+static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
+                                                 uint16_t max_interval, uint8_t advtype,
+                                                 uint8_t own_bdaddr_type,
+                                                 uint8_t direct_bdaddr_type,
+                                                 const bdaddr_t *direct_bdaddr, uint8_t chan_map,
+                                                 uint8_t filter, int to);
+static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t *data, int to);
+static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data, int to);
+static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to);
 
 struct k10_mgmt_hdr {
     uint16_t opcode;
@@ -587,23 +588,23 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
         return -EINVAL;
     }
 
-    r = hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, 0x00, 0x00,
-                                          &direct_addr, 0x07, 0x00, 1000);
+    r = k10_hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, 0x00, 0x00,
+                                              &direct_addr, 0x07, 0x00, 1000);
     if (r < 0) {
         return -errno;
     }
 
-    r = hci_le_set_advertising_data(state->hci_fd, (uint8_t)adv_len, adv_buffer, 1000);
+    r = k10_hci_le_set_advertising_data(state->hci_fd, (uint8_t)adv_len, adv_buffer, 1000);
     if (r < 0) {
         return -errno;
     }
 
-    r = hci_le_set_scan_response_data(state->hci_fd, (uint8_t)scan_len, scan_buffer, 1000);
+    r = k10_hci_le_set_scan_response_data(state->hci_fd, (uint8_t)scan_len, scan_buffer, 1000);
     if (r < 0) {
         return -errno;
     }
 
-    r = hci_le_set_advertise_enable(state->hci_fd, 0x01, 1000);
+    r = k10_hci_le_set_advertise_enable(state->hci_fd, 0x01, 1000);
     if (r < 0) {
         return -errno;
     }
@@ -619,7 +620,7 @@ static int k10_adv_hci_stop(struct k10_adv_state *state) {
         return 0;
     }
 
-    r = hci_le_set_advertise_enable(state->hci_fd, 0x00, 1000);
+    r = k10_hci_le_set_advertise_enable(state->hci_fd, 0x00, 1000);
     if (r < 0) {
         r = -errno;
     }
@@ -630,6 +631,130 @@ static int k10_adv_hci_stop(struct k10_adv_state *state) {
     }
     state->hci_active = false;
     return r;
+}
+
+static int k10_hci_send_req(int dd, uint16_t ocf, void *cp, uint8_t clen, void *rp, uint8_t rlen,
+                            int to) {
+    struct hci_request req;
+
+    memset(&req, 0, sizeof(req));
+    req.ogf = OGF_LE_CTL;
+    req.ocf = ocf;
+    req.cparam = cp;
+    req.clen = clen;
+    req.rparam = rp;
+    req.rlen = rlen;
+    req.event = EVT_CMD_COMPLETE;
+
+    return hci_send_req(dd, &req, to);
+}
+
+static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
+                                                 uint16_t max_interval, uint8_t advtype,
+                                                 uint8_t own_bdaddr_type,
+                                                 uint8_t direct_bdaddr_type,
+                                                 const bdaddr_t *direct_bdaddr, uint8_t chan_map,
+                                                 uint8_t filter, int to) {
+    le_set_advertising_parameters_cp cp;
+    le_set_advertising_parameters_rp rp;
+
+    memset(&cp, 0, sizeof(cp));
+    cp.min_interval = htobs(min_interval);
+    cp.max_interval = htobs(max_interval);
+    cp.advtype = advtype;
+    cp.own_bdaddr_type = own_bdaddr_type;
+    cp.direct_bdaddr_type = direct_bdaddr_type;
+    if (direct_bdaddr != NULL) {
+        bacpy(&cp.direct_bdaddr, direct_bdaddr);
+    }
+    cp.chan_map = chan_map;
+    cp.filter = filter;
+
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_PARAMETERS, &cp,
+                         LE_SET_ADVERTISING_PARAMETERS_CP_SIZE, &rp,
+                         LE_SET_ADVERTISING_PARAMETERS_RP_SIZE, to) < 0) {
+        return -1;
+    }
+
+    if (rp.status) {
+        errno = EIO;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t *data, int to) {
+    le_set_advertising_data_cp cp;
+    le_set_advertising_data_rp rp;
+
+    memset(&cp, 0, sizeof(cp));
+    if (length > sizeof(cp.data)) {
+        length = (uint8_t)sizeof(cp.data);
+    }
+    cp.length = length;
+    if (data != NULL && length > 0) {
+        memcpy(cp.data, data, length);
+    }
+
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_DATA, &cp, LE_SET_ADVERTISING_DATA_CP_SIZE,
+                         &rp, LE_SET_ADVERTISING_DATA_RP_SIZE, to) < 0) {
+        return -1;
+    }
+
+    if (rp.status) {
+        errno = EIO;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data,
+                                             int to) {
+    le_set_scan_response_data_cp cp;
+    le_set_scan_response_data_rp rp;
+
+    memset(&cp, 0, sizeof(cp));
+    if (length > sizeof(cp.data)) {
+        length = (uint8_t)sizeof(cp.data);
+    }
+    cp.length = length;
+    if (data != NULL && length > 0) {
+        memcpy(cp.data, data, length);
+    }
+
+    if (k10_hci_send_req(dd, OCF_LE_SET_SCAN_RESPONSE_DATA, &cp,
+                         LE_SET_SCAN_RESPONSE_DATA_CP_SIZE, &rp,
+                         LE_SET_SCAN_RESPONSE_DATA_RP_SIZE, to) < 0) {
+        return -1;
+    }
+
+    if (rp.status) {
+        errno = EIO;
+        return -1;
+    }
+
+    return 0;
+}
+
+static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to) {
+    le_set_advertise_enable_cp cp;
+    le_set_advertise_enable_rp rp;
+
+    cp.enable = enable;
+
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISE_ENABLE, &cp, LE_SET_ADVERTISE_ENABLE_CP_SIZE,
+                         &rp, LE_SET_ADVERTISE_ENABLE_RP_SIZE, to) < 0) {
+        return -1;
+    }
+
+    if (rp.status) {
+        errno = EIO;
+        return -1;
+    }
+
+    return 0;
 }
 
 static int k10_adv_mgmt_stop(struct k10_adv_state *state, const struct k10_config *config) {
