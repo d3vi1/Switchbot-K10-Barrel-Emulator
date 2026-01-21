@@ -697,8 +697,8 @@ static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t
         memcpy(cp.data, data, length);
     }
 
-    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_DATA, &cp, LE_SET_ADVERTISING_DATA_CP_SIZE,
-                         &rp, LE_SET_ADVERTISING_DATA_RP_SIZE, to) < 0) {
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISING_DATA, &cp, LE_SET_ADVERTISING_DATA_CP_SIZE, &rp,
+                         LE_SET_ADVERTISING_DATA_RP_SIZE, to) < 0) {
         return -1;
     }
 
@@ -710,8 +710,7 @@ static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t
     return 0;
 }
 
-static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data,
-                                             int to) {
+static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8_t *data, int to) {
     le_set_scan_response_data_cp cp;
     le_set_scan_response_data_rp rp;
 
@@ -724,9 +723,8 @@ static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8
         memcpy(cp.data, data, length);
     }
 
-    if (k10_hci_send_req(dd, OCF_LE_SET_SCAN_RESPONSE_DATA, &cp,
-                         LE_SET_SCAN_RESPONSE_DATA_CP_SIZE, &rp,
-                         LE_SET_SCAN_RESPONSE_DATA_RP_SIZE, to) < 0) {
+    if (k10_hci_send_req(dd, OCF_LE_SET_SCAN_RESPONSE_DATA, &cp, LE_SET_SCAN_RESPONSE_DATA_CP_SIZE,
+                         &rp, LE_SET_SCAN_RESPONSE_DATA_RP_SIZE, to) < 0) {
         return -1;
     }
 
@@ -744,8 +742,8 @@ static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to) {
 
     cp.enable = enable;
 
-    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISE_ENABLE, &cp, LE_SET_ADVERTISE_ENABLE_CP_SIZE,
-                         &rp, LE_SET_ADVERTISE_ENABLE_RP_SIZE, to) < 0) {
+    if (k10_hci_send_req(dd, OCF_LE_SET_ADVERTISE_ENABLE, &cp, LE_SET_ADVERTISE_ENABLE_CP_SIZE, &rp,
+                         LE_SET_ADVERTISE_ENABLE_RP_SIZE, to) < 0) {
         return -1;
     }
 
