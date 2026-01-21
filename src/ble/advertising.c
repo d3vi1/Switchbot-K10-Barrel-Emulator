@@ -605,6 +605,8 @@ static int k10_adv_hci_start(struct k10_adv_state *state, const struct k10_confi
         }
     }
 
+    (void)k10_hci_le_set_advertise_enable(state->hci_fd, 0x00, 1000);
+
     r = k10_hci_le_set_advertising_parameters(state->hci_fd, 0x00a0, 0x00f0, 0x00, own_addr_type,
                                               0x00, &direct_addr, 0x07, 0x00, 1000);
     if (r < 0) {
@@ -697,6 +699,7 @@ static int k10_hci_le_set_advertising_parameters(int dd, uint16_t min_interval,
     }
 
     if (status) {
+        k10_log_error("hci set advertising parameters status: 0x%02x", status);
         errno = EIO;
         return -1;
     }
@@ -723,6 +726,7 @@ static int k10_hci_le_set_advertising_data(int dd, uint8_t length, const uint8_t
     }
 
     if (status) {
+        k10_log_error("hci set advertising data status: 0x%02x", status);
         errno = EIO;
         return -1;
     }
@@ -749,6 +753,7 @@ static int k10_hci_le_set_scan_response_data(int dd, uint8_t length, const uint8
     }
 
     if (status) {
+        k10_log_error("hci set scan response data status: 0x%02x", status);
         errno = EIO;
         return -1;
     }
@@ -768,6 +773,7 @@ static int k10_hci_le_set_advertise_enable(int dd, uint8_t enable, int to) {
     }
 
     if (status) {
+        k10_log_error("hci set advertise enable status: 0x%02x", status);
         errno = EIO;
         return -1;
     }
@@ -792,6 +798,7 @@ static int k10_hci_le_set_random_address(int dd, const bdaddr_t *addr, int to) {
     }
 
     if (status) {
+        k10_log_error("hci set random address status: 0x%02x", status);
         errno = EIO;
         return -1;
     }
