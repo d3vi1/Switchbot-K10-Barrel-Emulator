@@ -40,6 +40,9 @@ struct k10_hex_bytes {
     size_t length;
 };
 
+static uint8_t k10_adv_random_battery(void);
+static uint8_t k10_adv_next_seq(struct k10_adv_state *state);
+
 struct k10_mgmt_hdr {
     uint16_t opcode;
     uint16_t index;
@@ -369,8 +372,11 @@ static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_conf
 
     if (state->include_local_name && config->local_name[0] != '\0') {
         size_t name_len = strlen(config->local_name);
-        if (k10_adv_append_ad(adv_buffer, &adv_len, 0x09,
-                              (const uint8_t *)config->local_name, name_len) != 0) {
+        if (k10_adv_append_ad(adv_buffer,
+                              &adv_len,
+                              0x09,
+                              (const uint8_t *)config->local_name,
+                              name_len) != 0) {
             k10_log_error("mgmt adv data too large (name)");
             return -EINVAL;
         }
