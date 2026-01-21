@@ -25,6 +25,7 @@ Entry points:
 - `src/daemon/daemon.c` -> `k10_daemon_run()`
 - `src/config/config.c` -> `k10_config_load()` / `k10_config_save()`
 - `src/dbus/dbus.c` -> `k10_dbus_run()` / `k10_method_start()` / `k10_method_set_config()`
+- `src/ble/advertising.c` -> `k10_adv_start()` / `k10_adv_stop()`
 - `src/log/log.c` -> `k10_log_info()` / `k10_log_error()`
 
 ### Directory layout
@@ -139,7 +140,7 @@ Methods:
 - `Start() -> b`
 - `Stop() -> b`
 - `Reload() -> b` (re-read config)
-- `GetStatus() -> a{sv}` (includes mode/adapter/running)
+- `GetStatus() -> a{sv}` (includes mode/adapter/running/advertising)
 
 Signals:
 
@@ -158,10 +159,15 @@ Config keys (initial set):
 
 - `adapter` (string, e.g. `"hci0"`)
 - `local_name` (string)
+- `advertising_backend` (`"bluez"` or `"mgmt"`; `mgmt` allows custom ADV/SCAN payload split)
 - `company_id` (integer, hex allowed)
 - `manufacturer_mac_label` (string, hex bytes) or empty for auto
+- `sweeper_mfg_suffix` (string, hex bytes, appended after MAC; SEQ inserted automatically)
+- `barrel_mfg_suffix` (string, hex bytes, appended after MAC; SEQ inserted automatically)
 - `service_uuids` (array of strings)
 - `fd3d_service_data_hex` (string hex)
+- `sweeper_fd3d_service_data_hex` (string hex; overrides `fd3d_service_data_hex` in sweeper mode when set)
+- `barrel_fd3d_service_data_hex` (string hex; overrides `fd3d_service_data_hex` in barrel mode when set)
 - `include_tx_power` (bool)
 - `fw_major` / `fw_minor` (int)
 

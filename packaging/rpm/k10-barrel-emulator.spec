@@ -10,6 +10,7 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  gcc
 BuildRequires:  cmake
 BuildRequires:  make
+BuildRequires:  bluez-libs-devel
 BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  systemd-rpm-macros
 

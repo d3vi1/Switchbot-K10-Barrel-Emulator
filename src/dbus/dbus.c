@@ -1,8 +1,11 @@
 #include "k10_barrel/dbus.h"
-
+#include "k10_barrel/advertising.h"
 #include "k10_barrel/config.h"
+#include "k10_barrel/gatt.h"
 #include "k10_barrel/log.h"
 
+#include <ctype.h>
+#include <errno.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,6 +27,9 @@ struct k10_control_binding {
 
 static volatile sig_atomic_t k10_should_exit = 0;
 
+static int k10_get_adapter_address(sd_bus *bus, const char *adapter, char *out, size_t out_size);
+static void k10_format_mfg_label(char *out, size_t out_size, const char *mac, const char *suffix);
+
 static const char *k10_mode_to_string(enum k10_emulator_mode mode) {
     switch (mode) {
     case K10_MODE_SWEEPER:
@@ -32,6 +38,71 @@ static const char *k10_mode_to_string(enum k10_emulator_mode mode) {
         return "barrel";
     default:
         return "idle";
+    }
+}
+
+static void k10_apply_mode_name(struct k10_config *config, enum k10_emulator_mode mode) {
+    if (config == NULL) {
+        return;
+    }
+
+    switch (mode) {
+    case K10_MODE_SWEEPER:
+        strncpy(config->local_name, "WoS1MI", sizeof(config->local_name) - 1);
+        config->local_name[sizeof(config->local_name) - 1] = '\0';
+        break;
+    case K10_MODE_BARREL:
+        strncpy(config->local_name, "WoS1MB", sizeof(config->local_name) - 1);
+        config->local_name[sizeof(config->local_name) - 1] = '\0';
+        break;
+    default:
+        break;
+    }
+}
+
+static void k10_apply_mode_mfg(struct k10_config *config, sd_bus *bus,
+                               enum k10_emulator_mode mode) {
+    const char *suffix = NULL;
+    char address[32] = {0};
+
+    if (config == NULL || bus == NULL) {
+        return;
+    }
+
+    if (config->manufacturer_mac_label[0] != '\0') {
+        return;
+    }
+
+    if (k10_get_adapter_address(bus, config->adapter, address, sizeof(address)) != 0) {
+        return;
+    }
+
+    if (mode == K10_MODE_SWEEPER) {
+        suffix = config->sweeper_mfg_suffix;
+    } else if (mode == K10_MODE_BARREL) {
+        suffix = config->barrel_mfg_suffix;
+    }
+
+    k10_format_mfg_label(config->manufacturer_mac_label, sizeof(config->manufacturer_mac_label),
+                         address, suffix);
+}
+
+static void k10_apply_mode_fd3d(struct k10_config *config, enum k10_emulator_mode mode) {
+    const char *value = NULL;
+
+    if (config == NULL) {
+        return;
+    }
+
+    if (mode == K10_MODE_SWEEPER) {
+        value = config->sweeper_fd3d_service_data_hex;
+    } else if (mode == K10_MODE_BARREL) {
+        value = config->barrel_fd3d_service_data_hex;
+    }
+
+    if (value != NULL && value[0] != '\0') {
+        strncpy(config->fd3d_service_data_hex, value, sizeof(config->fd3d_service_data_hex) - 1);
+        config->fd3d_service_data_hex[sizeof(config->fd3d_service_data_hex) - 1] = '\0';
     }
 }
 
@@ -185,6 +256,11 @@ static int k10_dbus_append_status(sd_bus_message *msg, const struct k10_daemon_s
         return r;
     }
 
+    r = k10_dbus_append_kv_bool(msg, "advertising", state->adv.registered || state->adv.pending);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_string(msg, "mode", k10_mode_to_string(state->mode));
     if (r < 0) {
         return r;
@@ -226,12 +302,39 @@ static int k10_dbus_append_config(sd_bus_message *msg, const struct k10_config *
         return r;
     }
 
+    r = k10_dbus_append_kv_string(msg, "advertising_backend", config->advertising_backend);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_uint(msg, "company_id", config->company_id);
     if (r < 0) {
         return r;
     }
 
     r = k10_dbus_append_kv_string(msg, "manufacturer_mac_label", config->manufacturer_mac_label);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_string(msg, "sweeper_mfg_suffix", config->sweeper_mfg_suffix);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_string(msg, "barrel_mfg_suffix", config->barrel_mfg_suffix);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_string(msg, "sweeper_fd3d_service_data_hex",
+                                  config->sweeper_fd3d_service_data_hex);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_string(msg, "barrel_fd3d_service_data_hex",
+                                  config->barrel_fd3d_service_data_hex);
     if (r < 0) {
         return r;
     }
@@ -248,6 +351,11 @@ static int k10_dbus_append_config(sd_bus_message *msg, const struct k10_config *
     }
 
     r = k10_dbus_append_kv_bool(msg, "include_tx_power", config->include_tx_power);
+    if (r < 0) {
+        return r;
+    }
+
+    r = k10_dbus_append_kv_bool(msg, "use_random_address", config->use_random_address);
     if (r < 0) {
         return r;
     }
@@ -312,9 +420,29 @@ static void k10_dbus_emit_status_all(struct k10_dbus_context *ctx) {
 }
 
 static int k10_dbus_reload_config(struct k10_dbus_context *ctx) {
+    bool was_advertising = ctx->state->adv.registered;
+    bool was_gatt = ctx->state->gatt.registered;
+
     if (k10_config_load(ctx->state->config_path, &ctx->state->config) != 0) {
         k10_log_error("dbus reload failed: %s", ctx->state->config_path);
         return -1;
+    }
+
+    if (was_advertising) {
+        k10_adv_stop(ctx->bus, &ctx->state->adv);
+        if (k10_adv_start(ctx->bus, &ctx->state->adv, &ctx->state->config) == 0) {
+            ctx->state->running = true;
+        } else {
+            ctx->state->running = false;
+        }
+    }
+    if (was_gatt) {
+        k10_gatt_stop(ctx->bus, &ctx->state->gatt);
+        if (k10_gatt_start(ctx->bus, &ctx->state->gatt, &ctx->state->config) == 0) {
+            ctx->state->running = true;
+        } else {
+            ctx->state->running = false;
+        }
     }
 
     k10_log_info("dbus reload: %s", ctx->state->config_path);
@@ -348,16 +476,41 @@ static int k10_method_get_status(sd_bus_message *m, void *userdata, sd_bus_error
 
 static int k10_method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
     struct k10_control_binding *binding = userdata;
+    bool ok = false;
+    bool adv_ok = false;
+    bool gatt_ok = false;
+    struct k10_config runtime_config;
 
     (void)ret_error;
 
-    binding->ctx->state->running = true;
-    binding->ctx->state->mode = binding->mode;
+    runtime_config = binding->ctx->state->config;
+    k10_apply_mode_name(&runtime_config, binding->mode);
+    k10_apply_mode_mfg(&runtime_config, binding->ctx->bus, binding->mode);
+    k10_apply_mode_fd3d(&runtime_config, binding->mode);
+
+    adv_ok = (k10_adv_start(binding->ctx->bus, &binding->ctx->state->adv, &runtime_config) == 0);
+    gatt_ok = (k10_gatt_start(binding->ctx->bus, &binding->ctx->state->gatt, &runtime_config) == 0);
+
+    if (adv_ok && gatt_ok) {
+        binding->ctx->state->running = true;
+        binding->ctx->state->mode = binding->mode;
+        binding->ctx->state->config = runtime_config;
+        ok = true;
+    } else {
+        if (adv_ok) {
+            k10_adv_stop(binding->ctx->bus, &binding->ctx->state->adv);
+        }
+        if (gatt_ok) {
+            k10_gatt_stop(binding->ctx->bus, &binding->ctx->state->gatt);
+        }
+        binding->ctx->state->running = false;
+        binding->ctx->state->mode = K10_MODE_NONE;
+    }
 
     k10_log_info("dbus start requested: mode=%s", k10_mode_to_string(binding->mode));
     k10_dbus_emit_status_all(binding->ctx);
 
-    return sd_bus_reply_method_return(m, "b", 1);
+    return sd_bus_reply_method_return(m, "b", ok);
 }
 
 static int k10_method_stop(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) {
@@ -365,6 +518,8 @@ static int k10_method_stop(sd_bus_message *m, void *userdata, sd_bus_error *ret_
 
     (void)ret_error;
 
+    k10_adv_stop(binding->ctx->bus, &binding->ctx->state->adv);
+    k10_gatt_stop(binding->ctx->bus, &binding->ctx->state->gatt);
     binding->ctx->state->running = false;
     binding->ctx->state->mode = K10_MODE_NONE;
 
@@ -533,12 +688,32 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
             r = k10_dbus_apply_string(m, updated_config.local_name,
                                       sizeof(updated_config.local_name));
             entry_updated = (r >= 0);
+        } else if (strcmp(key, "advertising_backend") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.advertising_backend,
+                                      sizeof(updated_config.advertising_backend));
+            entry_updated = (r >= 0);
         } else if (strcmp(key, "company_id") == 0) {
             r = k10_dbus_apply_uint(m, &updated_config.company_id);
             entry_updated = (r >= 0);
         } else if (strcmp(key, "manufacturer_mac_label") == 0) {
             r = k10_dbus_apply_string(m, updated_config.manufacturer_mac_label,
                                       sizeof(updated_config.manufacturer_mac_label));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "sweeper_mfg_suffix") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.sweeper_mfg_suffix,
+                                      sizeof(updated_config.sweeper_mfg_suffix));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "barrel_mfg_suffix") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.barrel_mfg_suffix,
+                                      sizeof(updated_config.barrel_mfg_suffix));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "sweeper_fd3d_service_data_hex") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.sweeper_fd3d_service_data_hex,
+                                      sizeof(updated_config.sweeper_fd3d_service_data_hex));
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "barrel_fd3d_service_data_hex") == 0) {
+            r = k10_dbus_apply_string(m, updated_config.barrel_fd3d_service_data_hex,
+                                      sizeof(updated_config.barrel_fd3d_service_data_hex));
             entry_updated = (r >= 0);
         } else if (strcmp(key, "service_uuids") == 0) {
             r = k10_dbus_apply_uuid_array(m, &updated_config);
@@ -549,6 +724,9 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
             entry_updated = (r >= 0);
         } else if (strcmp(key, "include_tx_power") == 0) {
             r = k10_dbus_apply_bool(m, &updated_config.include_tx_power);
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "use_random_address") == 0) {
+            r = k10_dbus_apply_bool(m, &updated_config.use_random_address);
             entry_updated = (r >= 0);
         } else if (strcmp(key, "fw_major") == 0) {
             r = k10_dbus_apply_uint(m, &updated_config.fw_major);
@@ -628,6 +806,79 @@ static const sd_bus_vtable k10_config_vtable[] = {
 static void k10_handle_signal(int signal_value) {
     (void)signal_value;
     k10_should_exit = 1;
+}
+
+static int k10_get_adapter_address(sd_bus *bus, const char *adapter, char *out, size_t out_size) {
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_message *reply = NULL;
+    const char *address = NULL;
+    char adapter_path[128];
+    int r = 0;
+
+    if (bus == NULL || adapter == NULL || out == NULL || out_size == 0) {
+        return -EINVAL;
+    }
+
+    snprintf(adapter_path, sizeof(adapter_path), "/org/bluez/%s", adapter);
+
+    r = sd_bus_call_method(bus, "org.bluez", adapter_path, "org.freedesktop.DBus.Properties", "Get",
+                           &error, &reply, "ss", "org.bluez.Adapter1", "Address");
+    if (r < 0) {
+        k10_log_error("adapter address lookup failed: %s",
+                      error.message ? error.message : strerror(-r));
+        sd_bus_error_free(&error);
+        sd_bus_message_unref(reply);
+        return r;
+    }
+
+    r = sd_bus_message_enter_container(reply, 'v', "s");
+    if (r < 0) {
+        sd_bus_message_unref(reply);
+        return r;
+    }
+
+    r = sd_bus_message_read(reply, "s", &address);
+    if (r < 0) {
+        sd_bus_message_unref(reply);
+        return r;
+    }
+
+    strncpy(out, address ? address : "", out_size - 1);
+    out[out_size - 1] = '\0';
+
+    sd_bus_message_unref(reply);
+    return 0;
+}
+
+static void k10_format_mfg_label(char *out, size_t out_size, const char *mac, const char *suffix) {
+    size_t used = 0;
+
+    if (out == NULL || out_size == 0) {
+        return;
+    }
+
+    out[0] = '\0';
+
+    if (mac != NULL) {
+        for (size_t i = 0; mac[i] != '\0' && used + 1 < out_size; i++) {
+            if (mac[i] == ':' || mac[i] == '-') {
+                continue;
+            }
+            out[used++] = (char)toupper((unsigned char)mac[i]);
+        }
+    }
+
+    out[used] = '\0';
+
+    if (suffix != NULL && suffix[0] != '\0' && used + 1 < out_size) {
+        for (size_t i = 0; suffix[i] != '\0' && used + 1 < out_size; i++) {
+            if (suffix[i] == ':' || suffix[i] == '-' || isspace((unsigned char)suffix[i])) {
+                continue;
+            }
+            out[used++] = (char)toupper((unsigned char)suffix[i]);
+        }
+        out[used] = '\0';
+    }
 }
 
 int k10_dbus_run(struct k10_daemon_state *state) {

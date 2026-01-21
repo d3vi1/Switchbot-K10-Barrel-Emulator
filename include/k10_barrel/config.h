@@ -8,12 +8,18 @@
 struct k10_config {
     char adapter[16];
     char local_name[64];
+    char advertising_backend[16];
     unsigned int company_id;
     char manufacturer_mac_label[32];
+    char sweeper_mfg_suffix[32];
+    char barrel_mfg_suffix[32];
     char service_uuids[K10_MAX_UUIDS][64];
     unsigned int service_uuid_count;
     char fd3d_service_data_hex[64];
+    char sweeper_fd3d_service_data_hex[64];
+    char barrel_fd3d_service_data_hex[64];
     bool include_tx_power;
+    bool use_random_address;
     unsigned int fw_major;
     unsigned int fw_minor;
 };

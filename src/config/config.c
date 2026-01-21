@@ -14,8 +14,14 @@ static void k10_config_set_defaults(struct k10_config *config) {
     memset(config, 0, sizeof(*config));
     strncpy(config->adapter, "hci0", sizeof(config->adapter) - 1);
     strncpy(config->local_name, "WoS1MB", sizeof(config->local_name) - 1);
+    strncpy(config->advertising_backend, "bluez", sizeof(config->advertising_backend) - 1);
     config->company_id = 0x0969;
+    strncpy(config->sweeper_mfg_suffix, "2064", sizeof(config->sweeper_mfg_suffix) - 1);
+    strncpy(config->barrel_mfg_suffix, "16230200", sizeof(config->barrel_mfg_suffix) - 1);
+    strncpy(config->sweeper_fd3d_service_data_hex, "7d00",
+            sizeof(config->sweeper_fd3d_service_data_hex) - 1);
     config->include_tx_power = true;
+    config->use_random_address = true;
     config->fw_major = 1;
     config->fw_minor = 0;
 }
@@ -209,6 +215,11 @@ static int k10_apply_config_line(char *line, struct k10_config *config) {
         return k10_parse_string(value, config->local_name, sizeof(config->local_name));
     }
 
+    if (strcmp(key, "advertising_backend") == 0) {
+        return k10_parse_string(value, config->advertising_backend,
+                                sizeof(config->advertising_backend));
+    }
+
     if (strcmp(key, "company_id") == 0) {
         return k10_parse_uint(value, &config->company_id);
     }
@@ -216,6 +227,16 @@ static int k10_apply_config_line(char *line, struct k10_config *config) {
     if (strcmp(key, "manufacturer_mac_label") == 0) {
         return k10_parse_string(value, config->manufacturer_mac_label,
                                 sizeof(config->manufacturer_mac_label));
+    }
+
+    if (strcmp(key, "sweeper_mfg_suffix") == 0) {
+        return k10_parse_string(value, config->sweeper_mfg_suffix,
+                                sizeof(config->sweeper_mfg_suffix));
+    }
+
+    if (strcmp(key, "barrel_mfg_suffix") == 0) {
+        return k10_parse_string(value, config->barrel_mfg_suffix,
+                                sizeof(config->barrel_mfg_suffix));
     }
 
     if (strcmp(key, "service_uuids") == 0) {
@@ -227,8 +248,22 @@ static int k10_apply_config_line(char *line, struct k10_config *config) {
                                 sizeof(config->fd3d_service_data_hex));
     }
 
+    if (strcmp(key, "sweeper_fd3d_service_data_hex") == 0) {
+        return k10_parse_string(value, config->sweeper_fd3d_service_data_hex,
+                                sizeof(config->sweeper_fd3d_service_data_hex));
+    }
+
+    if (strcmp(key, "barrel_fd3d_service_data_hex") == 0) {
+        return k10_parse_string(value, config->barrel_fd3d_service_data_hex,
+                                sizeof(config->barrel_fd3d_service_data_hex));
+    }
+
     if (strcmp(key, "include_tx_power") == 0) {
         return k10_parse_bool(value, &config->include_tx_power);
+    }
+
+    if (strcmp(key, "use_random_address") == 0) {
+        return k10_parse_bool(value, &config->use_random_address);
     }
 
     if (strcmp(key, "fw_major") == 0) {
@@ -331,8 +366,11 @@ int k10_config_save(const char *path, const struct k10_config *config) {
 
     fprintf(file, "adapter = \"%s\"\n", config->adapter);
     fprintf(file, "local_name = \"%s\"\n", config->local_name);
+    fprintf(file, "advertising_backend = \"%s\"\n", config->advertising_backend);
     fprintf(file, "company_id = 0x%04X\n", config->company_id);
     fprintf(file, "manufacturer_mac_label = \"%s\"\n", config->manufacturer_mac_label);
+    fprintf(file, "sweeper_mfg_suffix = \"%s\"\n", config->sweeper_mfg_suffix);
+    fprintf(file, "barrel_mfg_suffix = \"%s\"\n", config->barrel_mfg_suffix);
 
     fprintf(file, "service_uuids = [");
     for (unsigned int i = 0; i < config->service_uuid_count; i++) {
@@ -344,7 +382,11 @@ int k10_config_save(const char *path, const struct k10_config *config) {
     fprintf(file, "]\n");
 
     fprintf(file, "fd3d_service_data_hex = \"%s\"\n", config->fd3d_service_data_hex);
+    fprintf(file, "sweeper_fd3d_service_data_hex = \"%s\"\n",
+            config->sweeper_fd3d_service_data_hex);
+    fprintf(file, "barrel_fd3d_service_data_hex = \"%s\"\n", config->barrel_fd3d_service_data_hex);
     fprintf(file, "include_tx_power = %s\n", config->include_tx_power ? "true" : "false");
+    fprintf(file, "use_random_address = %s\n", config->use_random_address ? "true" : "false");
     fprintf(file, "fw_major = %u\n", config->fw_major);
     fprintf(file, "fw_minor = %u\n", config->fw_minor);
 
