@@ -183,8 +183,7 @@ static int k10_gatt_char_get_value(sd_bus *bus, const char *path, const char *in
 
 static int k10_gatt_emit_value(sd_bus *bus, const struct k10_gatt_char_ctx *ctx) {
     if (ctx != NULL && ctx->kind == K10_CHAR_TX && ctx->state != NULL) {
-        k10_gatt_log_value("gatt notify (tx)", ctx->state->tx_value, ctx->state->tx_len,
-                           ctx->state->tx_uuid);
+        k10_gatt_log_value("gatt notify (tx)", ctx->state->tx_value, ctx->state->tx_len, ctx->uuid);
     }
     return sd_bus_emit_properties_changed(bus, ctx->path, K10_GATT_CHAR_IFACE, "Value", NULL);
 }
@@ -203,13 +202,13 @@ static int k10_gatt_char_read_value(sd_bus_message *m, void *userdata, sd_bus_er
     if (ctx->kind == K10_CHAR_TX) {
         value = ctx->state->tx_value;
         length = ctx->state->tx_len;
-        k10_log_info("gatt read (tx) len=%zu uuid=%s", length, ctx->state->tx_uuid);
-        k10_gatt_log_value("gatt read (tx)", value, length, ctx->state->tx_uuid);
+        k10_log_info("gatt read (tx) len=%zu uuid=%s", length, ctx->uuid);
+        k10_gatt_log_value("gatt read (tx)", value, length, ctx->uuid);
     } else {
         value = ctx->state->rx_value;
         length = ctx->state->rx_len;
-        k10_log_info("gatt read (rx) len=%zu uuid=%s", length, ctx->state->rx_uuid);
-        k10_gatt_log_value("gatt read (rx)", value, length, ctx->state->rx_uuid);
+        k10_log_info("gatt read (rx) len=%zu uuid=%s", length, ctx->uuid);
+        k10_gatt_log_value("gatt read (rx)", value, length, ctx->uuid);
     }
 
     r = sd_bus_message_new_method_return(m, &reply);
@@ -271,8 +270,8 @@ static int k10_gatt_char_write_value(sd_bus_message *m, void *userdata, sd_bus_e
 
     memcpy(ctx->state->rx_value, value, length);
     ctx->state->rx_len = length;
-    k10_log_info("gatt write (rx) len=%zu uuid=%s", length, ctx->state->rx_uuid);
-    k10_gatt_log_value("gatt write (rx)", value, length, ctx->state->rx_uuid);
+    k10_log_info("gatt write (rx) len=%zu uuid=%s", length, ctx->uuid);
+    k10_gatt_log_value("gatt write (rx)", value, length, ctx->uuid);
 
     if (ctx->state->tx_notifying) {
         size_t copy_len = length;
@@ -299,7 +298,7 @@ static int k10_gatt_char_start_notify(sd_bus_message *m, void *userdata, sd_bus_
     }
 
     ctx->state->tx_notifying = true;
-    k10_log_info("gatt notify enabled uuid=%s", ctx->state->tx_uuid);
+    k10_log_info("gatt notify enabled uuid=%s", ctx->uuid);
     k10_gatt_emit_value(sd_bus_message_get_bus(m), ctx);
     return sd_bus_reply_method_return(m, "");
 }
@@ -316,7 +315,7 @@ static int k10_gatt_char_stop_notify(sd_bus_message *m, void *userdata, sd_bus_e
     }
 
     ctx->state->tx_notifying = false;
-    k10_log_info("gatt notify disabled uuid=%s", ctx->state->tx_uuid);
+    k10_log_info("gatt notify disabled uuid=%s", ctx->uuid);
     return sd_bus_reply_method_return(m, "");
 }
 
