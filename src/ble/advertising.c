@@ -72,6 +72,18 @@ struct k10_mgmt_cp_add_ext_adv_data {
     uint8_t data[];
 } __attribute__((packed));
 
+struct k10_mgmt_cp_set_ext_adv_enable_inst {
+    uint8_t instance;
+    uint16_t duration;
+    uint16_t timeout;
+} __attribute__((packed));
+
+struct k10_mgmt_cp_set_ext_adv_enable {
+    uint8_t enable;
+    uint8_t count;
+    struct k10_mgmt_cp_set_ext_adv_enable_inst inst[];
+} __attribute__((packed));
+
 static int k10_hex_value(char ch) {
     if (ch >= '0' && ch <= '9') {
         return ch - '0';
@@ -443,6 +455,33 @@ static int k10_adv_mgmt_start(struct k10_adv_state *state, const struct k10_conf
         return r;
     }
 
+    {
+        uint8_t enable_buf[sizeof(struct k10_mgmt_cp_set_ext_adv_enable) +
+                           sizeof(struct k10_mgmt_cp_set_ext_adv_enable_inst)];
+        struct k10_mgmt_cp_set_ext_adv_enable *enable =
+            (struct k10_mgmt_cp_set_ext_adv_enable *)enable_buf;
+
+        memset(enable, 0, sizeof(enable_buf));
+        enable->enable = 1;
+        enable->count = 1;
+        enable->inst[0].instance = state->mgmt_instance;
+        enable->inst[0].duration = 0;
+        enable->inst[0].timeout = 0;
+
+        r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_SET_EXT_ADV_ENABLE, index, enable,
+                              (uint16_t)sizeof(enable_buf));
+        if (r < 0) {
+            k10_log_error("mgmt enable adv failed: %s", strerror(-r));
+            return r;
+        }
+
+        r = k10_mgmt_wait_cmd_complete(state->mgmt_fd, K10_MGMT_OP_SET_EXT_ADV_ENABLE, &status);
+        if (r < 0) {
+            k10_log_error("mgmt enable adv rejected: 0x%02x", status);
+            return r;
+        }
+    }
+
     state->mgmt_active = true;
     return 0;
 }
@@ -458,6 +497,33 @@ static int k10_adv_mgmt_stop(struct k10_adv_state *state, const struct k10_confi
     }
 
     index = k10_adv_adapter_index(config->adapter);
+
+    {
+        uint8_t enable_buf[sizeof(struct k10_mgmt_cp_set_ext_adv_enable) +
+                           sizeof(struct k10_mgmt_cp_set_ext_adv_enable_inst)];
+        struct k10_mgmt_cp_set_ext_adv_enable *enable =
+            (struct k10_mgmt_cp_set_ext_adv_enable *)enable_buf;
+
+        memset(enable, 0, sizeof(enable_buf));
+        enable->enable = 0;
+        enable->count = 1;
+        enable->inst[0].instance = state->mgmt_instance;
+        enable->inst[0].duration = 0;
+        enable->inst[0].timeout = 0;
+
+        r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_SET_EXT_ADV_ENABLE, index, enable,
+                              (uint16_t)sizeof(enable_buf));
+        if (r < 0) {
+            k10_log_error("mgmt disable adv failed: %s", strerror(-r));
+            return r;
+        }
+
+        r = k10_mgmt_wait_cmd_complete(state->mgmt_fd, K10_MGMT_OP_SET_EXT_ADV_ENABLE, &status);
+        if (r < 0) {
+            k10_log_error("mgmt disable adv rejected: 0x%02x", status);
+            return r;
+        }
+    }
 
     r = k10_mgmt_send_cmd(state->mgmt_fd, K10_MGMT_OP_REMOVE_ADV, index, &instance,
                           sizeof(instance));
