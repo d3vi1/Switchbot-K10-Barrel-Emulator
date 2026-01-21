@@ -19,6 +19,7 @@ struct k10_config {
     char sweeper_fd3d_service_data_hex[64];
     char barrel_fd3d_service_data_hex[64];
     bool include_tx_power;
+    bool use_random_address;
     unsigned int fw_major;
     unsigned int fw_minor;
 };

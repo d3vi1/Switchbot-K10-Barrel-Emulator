@@ -355,6 +355,11 @@ static int k10_dbus_append_config(sd_bus_message *msg, const struct k10_config *
         return r;
     }
 
+    r = k10_dbus_append_kv_bool(msg, "use_random_address", config->use_random_address);
+    if (r < 0) {
+        return r;
+    }
+
     r = k10_dbus_append_kv_uint(msg, "fw_major", config->fw_major);
     if (r < 0) {
         return r;
@@ -719,6 +724,9 @@ static int k10_method_set_config(sd_bus_message *m, void *userdata, sd_bus_error
             entry_updated = (r >= 0);
         } else if (strcmp(key, "include_tx_power") == 0) {
             r = k10_dbus_apply_bool(m, &updated_config.include_tx_power);
+            entry_updated = (r >= 0);
+        } else if (strcmp(key, "use_random_address") == 0) {
+            r = k10_dbus_apply_bool(m, &updated_config.use_random_address);
             entry_updated = (r >= 0);
         } else if (strcmp(key, "fw_major") == 0) {
             r = k10_dbus_apply_uint(m, &updated_config.fw_major);

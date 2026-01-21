@@ -21,6 +21,7 @@ static void k10_config_set_defaults(struct k10_config *config) {
     strncpy(config->sweeper_fd3d_service_data_hex, "7d00",
             sizeof(config->sweeper_fd3d_service_data_hex) - 1);
     config->include_tx_power = true;
+    config->use_random_address = true;
     config->fw_major = 1;
     config->fw_minor = 0;
 }
@@ -261,6 +262,10 @@ static int k10_apply_config_line(char *line, struct k10_config *config) {
         return k10_parse_bool(value, &config->include_tx_power);
     }
 
+    if (strcmp(key, "use_random_address") == 0) {
+        return k10_parse_bool(value, &config->use_random_address);
+    }
+
     if (strcmp(key, "fw_major") == 0) {
         return k10_parse_uint(value, &config->fw_major);
     }
@@ -381,6 +386,7 @@ int k10_config_save(const char *path, const struct k10_config *config) {
             config->sweeper_fd3d_service_data_hex);
     fprintf(file, "barrel_fd3d_service_data_hex = \"%s\"\n", config->barrel_fd3d_service_data_hex);
     fprintf(file, "include_tx_power = %s\n", config->include_tx_power ? "true" : "false");
+    fprintf(file, "use_random_address = %s\n", config->use_random_address ? "true" : "false");
     fprintf(file, "fw_major = %u\n", config->fw_major);
     fprintf(file, "fw_minor = %u\n", config->fw_minor);
 
